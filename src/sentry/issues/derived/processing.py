@@ -159,15 +159,27 @@ class GroupLogTimeout(Exception):
     """Raised when process_group_log cannot finish within its timeout."""
 
 
+DEFAULT_TIME_LIMIT = timedelta(seconds=8)
+
+
 def _drain_log(
     derived: GroupDerivedData,
     batch_size: int = DEFAULT_BATCH_SIZE,
     pipeline: Pipeline[GroupActionLogEntry] | None = None,
-) -> None:
-    """Process all pending log entries into *derived*, batching as needed."""
+    time_limit: timedelta = DEFAULT_TIME_LIMIT,
+) -> bool:
+    """Process pending log entries into *derived*, batching as needed.
+
+    Returns True if all entries were processed, False if the time limit was
+    reached and more entries remain. The limit is checked between batches,
+    so a single slow batch can exceed it.
+    """
+    deadline = datetime.now(UTC) + time_limit
     p = pipeline or PIPELINE
     while _process_batch(p, derived, batch_size):
-        pass
+        if datetime.now(UTC) >= deadline:
+            return False
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -188,6 +200,8 @@ def process_group_log(
     Raises GroupLogTimeout if *timeout* elapses before all
     entries are processed.
     """
+    from sentry.issues.derived.tasks import process_group_log_task
+
     p = pipeline or PIPELINE
 
     with transaction.atomic(using=router.db_for_write(GroupDerivedData)):
@@ -205,7 +219,9 @@ def process_group_log(
                 raise GroupLogTimeout(group_id)
             has_more = _process_batch(p, derived, batch_size)
     else:
-        _drain_log(derived, batch_size, p)
+        drained = _drain_log(derived, batch_size, p)
+        if not drained:
+            process_group_log_task.delay(group_id)
 
     return derived
 
