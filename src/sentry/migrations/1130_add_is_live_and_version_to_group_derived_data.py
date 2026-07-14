@@ -39,12 +39,12 @@ class Migration(CheckedMigration):
         migrations.AddField(
             model_name="groupderiveddata",
             name="is_live",
-            field=models.BooleanField(default=False),
+            field=models.BooleanField(db_default=False, default=False),
         ),
         migrations.AddField(
             model_name="groupderiveddata",
             name="version",
-            field=sentry.db.models.fields.bounded.BoundedBigIntegerField(default=0),
+            field=sentry.db.models.fields.bounded.BoundedBigIntegerField(db_default=0, default=0),
         ),
         migrations.AlterField(
             model_name="groupderiveddata",

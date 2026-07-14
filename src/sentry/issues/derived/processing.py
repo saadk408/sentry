@@ -53,14 +53,14 @@ def _ensure_derived(group_id: int) -> GroupDerivedData | None:
     if not options.get("issues.derived-data.create-on-demand"):
         return None
 
-    try:
-        derived, _created = GroupDerivedData.objects.get_or_create(
-            group_id=group_id,
-            is_live=True,
-            defaults={"cursor_date": EPOCH, "cursor_id": 0, "data": {}},
-        )
-    except IntegrityError:
+    if not Group.objects.filter(id=group_id).exists():
         raise Group.DoesNotExist(f"Group {group_id} does not exist")
+
+    derived, _created = GroupDerivedData.objects.get_or_create(
+        group_id=group_id,
+        is_live=True,
+        defaults={"cursor_date": EPOCH, "cursor_id": 0, "data": {}},
+    )
     return derived
 
 
@@ -348,11 +348,32 @@ def promote_to_live(candidate: GroupDerivedData) -> PromotionResult:
 MAX_PROMOTION_ATTEMPTS = 5
 
 
+def _get_or_create_processing_row(group_id: int, version: int | None) -> GroupDerivedData | None:
+    """Resume an existing non-live row by version, or create a new one.
+
+    Returns None if creation fails (IntegrityError) or the requested version
+    no longer exists (cleaned up).
+    """
+    if version is not None:
+        return GroupDerivedData.objects.filter(
+            group_id=group_id, is_live=False, version=version
+        ).first()
+    try:
+        return create_processing_row(group_id)
+    except IntegrityError:
+        return None
+
+
 def build_and_promote_derived_data(
     group_id: int,
     batch_size: int = DEFAULT_BATCH_SIZE,
-) -> GroupDerivedData | None:
-    """Create a non-live row, drain the full log into it, and promote to live.
+    version: int | None = None,
+) -> None:
+    """Create (or resume) a non-live row, drain the log into it, and promote.
+
+    When *version* is provided, an existing non-live row with that version is
+    resumed instead of creating a new one. This allows the task to be
+    re-enqueued and pick up where it left off after a time-limited drain.
 
     If promotion fails because the live row's cursor is ahead (it received
     incremental updates while we were building), we drain additional entries
@@ -362,28 +383,19 @@ def build_and_promote_derived_data(
     Retries are bounded to avoid starvation if the live row is being updated
     faster than we can catch up. On exhaustion, a rebuild task is re-enqueued
     so the corrections are not permanently lost.
-
-    Returns the promoted row on success, or None if promotion was permanently
-    rejected or the group no longer exists.
     """
     from sentry.issues.derived.tasks import rebuild_group_derived_data_task
 
-    try:
-        derived = create_processing_row(group_id)
-    except IntegrityError:
-        return None
+    derived = _get_or_create_processing_row(group_id, version)
+    if derived is None:
+        return
 
     result = PromotionResult.CURSOR_BEHIND
     for attempt in range(MAX_PROMOTION_ATTEMPTS):
-        _drain_log(derived, batch_size)
-
-        # Refresh version after draining — new entries may have arrived since
-        # the row was created, and the live row's version may have advanced.
-        version = _max_entry_id(group_id)
-        if version > derived.version:
-            GroupDerivedData.objects.filter(id=derived.id).update(version=version)
-            derived.version = version
-
+        drained = _drain_log(derived, batch_size)
+        if not drained:
+            rebuild_group_derived_data_task.delay(group_id, version=derived.version)
+            return
         result = promote_to_live(derived)
         if result is PromotionResult.PROMOTED:
             logger.info(
@@ -396,7 +408,7 @@ def build_and_promote_derived_data(
                     "attempts": attempt + 1,
                 },
             )
-            return derived
+            return
 
         if result is not PromotionResult.CURSOR_BEHIND:
             break
@@ -423,8 +435,6 @@ def build_and_promote_derived_data(
             "result": result.value,
         },
     )
-
-    return None
 
 
 def cleanup_stale_processing_rows(

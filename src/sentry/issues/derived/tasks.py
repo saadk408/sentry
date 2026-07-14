@@ -35,11 +35,13 @@ def process_group_log_task(group_id: int, **kwargs: object) -> None:
     namespace=issues_tasks,
     silo_mode=SiloMode.CELL,
 )
-def rebuild_group_derived_data_task(group_id: int, **kwargs: object) -> None:
+def rebuild_group_derived_data_task(
+    group_id: int, version: int | None = None, **kwargs: object
+) -> None:
     """Build a new GroupDerivedData row from scratch and promote it to live."""
     from sentry.issues.derived.processing import build_and_promote_derived_data
 
-    build_and_promote_derived_data(group_id)
+    build_and_promote_derived_data(group_id, version=version)
 
 
 @instrumented_task(

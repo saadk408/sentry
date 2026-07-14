@@ -482,9 +482,8 @@ class PromoteToLiveTest(TestCase):
         _publish(group=group, action=ViewAction(), actor=GroupActionActor.user(self.user.id))
         _publish(group=group, action=ResolveAction(), actor=GroupActionActor.user(self.user.id))
 
-        derived = build_and_promote_derived_data(group.id)
-        assert derived is not None
-        assert derived.is_live
+        build_and_promote_derived_data(group.id)
+        derived = GroupDerivedData.objects.get(group_id=group.id, is_live=True)
         assert derived.view_count == 1
         assert derived.data["status"] == "closed"
 
@@ -498,8 +497,8 @@ class PromoteToLiveTest(TestCase):
         old_id = old.id
 
         _publish(group=group, action=ViewAction(), actor=GroupActionActor.user(user.id))
-        new = build_and_promote_derived_data(group.id)
-        assert new is not None
+        build_and_promote_derived_data(group.id)
+        new = GroupDerivedData.objects.get(group_id=group.id, is_live=True)
         assert new.id != old_id
         assert new.view_count == 2
         assert not GroupDerivedData.objects.filter(id=old_id).exists()
@@ -558,10 +557,35 @@ class PromoteToLiveTest(TestCase):
             return_value=PromotionResult.CURSOR_BEHIND,
         ):
             with patch("sentry.issues.derived.tasks.rebuild_group_derived_data_task") as mock_task:
-                result = build_and_promote_derived_data(group.id)
+                build_and_promote_derived_data(group.id)
 
-        assert result is None
         mock_task.delay.assert_called_once_with(group.id)
+
+    def test_build_and_promote_resumes_on_partial_drain(self) -> None:
+        group = self.create_group()
+        for _ in range(5):
+            _publish(group=group, action=ViewAction(), actor=GroupActionActor.user(self.user.id))
+
+        # First call: drain times out, re-enqueues with version
+        with patch("sentry.issues.derived.processing._drain_log", return_value=False):
+            with patch("sentry.issues.derived.tasks.rebuild_group_derived_data_task") as mock_task:
+                build_and_promote_derived_data(group.id)
+
+        # Should have re-enqueued with the version of the processing row
+        assert mock_task.delay.call_count == 1
+        _, kwargs = mock_task.delay.call_args
+        version = kwargs["version"]
+        assert version is not None
+
+        # The non-live row still exists
+        row = GroupDerivedData.objects.get(group_id=group.id, is_live=False, version=version)
+        assert row is not None
+
+        # Second call with that version resumes and promotes
+        build_and_promote_derived_data(group.id, version=version)
+        promoted = GroupDerivedData.objects.get(group_id=group.id, is_live=True)
+        assert promoted.id == row.id
+        assert promoted.view_count == 5
 
     def test_build_and_promote_breaks_on_superseded(self) -> None:
         group = self.create_group()
@@ -572,9 +596,8 @@ class PromoteToLiveTest(TestCase):
             "sentry.issues.derived.processing.promote_to_live",
             return_value=PromotionResult.SUPERSEDED,
         ) as mock_promote:
-            result = build_and_promote_derived_data(group.id)
+            build_and_promote_derived_data(group.id)
 
-        assert result is None
         # Should only try once, not retry
         assert mock_promote.call_count == 1
 

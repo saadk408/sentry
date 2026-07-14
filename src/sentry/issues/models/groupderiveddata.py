@@ -35,14 +35,13 @@ class GroupDerivedData(DefaultFieldsModel):
     __relocation_scope__ = RelocationScope.Excluded
 
     group = FlexibleForeignKey("sentry.Group")
-    is_live = models.BooleanField(default=False)
+    is_live = models.BooleanField(db_default=False, default=False)
 
-    # Monotonically increasing value reflecting how complete this row's view
-    # of the action log is. A higher version means the build observed a more
-    # complete log. Used in promotion to ensure a build that missed log
-    # mutations cannot replace one that saw them. Currently populated from
-    # max(GroupActionLogEntry.id) for the group at processing start time.
-    version = BoundedBigIntegerField(default=0)
+    # Version of the group's action log state at creation time. A higher value
+    # indicates a more recent view of the log. Used in promotion to ensure a
+    # build that missed log mutations cannot replace one that saw them.
+    # Set at creation; must not be updated afterward.
+    version = BoundedBigIntegerField(db_default=0, default=0)
 
     cursor_date = models.DateTimeField(default=EPOCH)
     cursor_id = BoundedBigIntegerField(default=0)
