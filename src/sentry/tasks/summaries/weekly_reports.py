@@ -853,13 +853,28 @@ def render_template_context(
         and ctx.total_spans_count > 0
     )
     total_spans_count = 0
+    top_spans_table: list[dict[str, Any]] = []
     if show_spans:
         user_project_ids = {p.project.id for p in user_projects}
-        total_spans_count = sum(
-            span["count"]
-            for span in ctx.top_spans
-            if ctx.top_spans_projects.get(span["name"], set()) & user_project_ids
-        )
+        project_by_id = {p.project.id: p.project for p in user_projects}
+        for span in ctx.top_spans:
+            span_project_ids = ctx.top_spans_projects.get(span["name"], set())
+            visible_project_ids = span_project_ids & user_project_ids
+            if not visible_project_ids:
+                continue
+            total_spans_count += span["count"]
+            projects = sorted(
+                (project_by_id[pid] for pid in visible_project_ids if pid in project_by_id),
+                key=lambda p: p.slug,
+            )
+            top_spans_table.append(
+                {
+                    "name": span["name"],
+                    "p95": span["p95"],
+                    "sum": span["sum"],
+                    "project_slugs": ", ".join(p.slug for p in projects),
+                }
+            )
 
     return {
         "organization": ctx.organization,
@@ -879,6 +894,7 @@ def render_template_context(
         ),
         "notification_settings_link": "/settings/account/notifications/reports/",
         "total_spans_count": total_spans_count,
+        "top_spans_table": top_spans_table,
     }
 
 

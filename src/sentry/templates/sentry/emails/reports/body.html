@@ -336,17 +336,6 @@
     {% endwith %}
   </div>
 
-  {% if total_spans_count and not enhanced_privacy %}
-  <div id="total-spans" style="margin-bottom: 20px;">
-    <h4 class="total-count-title" style="font-weight: bold;">Total Spans</h4>
-    <h1 style="margin: 0; font-weight: bold;" class="total-count">
-      {{ total_spans_count|small_count:1 }}
-    </h1>
-    <a href="{% org_url organization '/explore/spans/' %}"
-       style="font-size: 12px; margin-bottom: 16px; display: block; font-weight: bold;">View All Spans</a>
-  </div>
-  {% endif %}
-
   <div id="events-by-issue-type">
 
     {% if issue_summary.all_issue_count > 0 %}
@@ -469,6 +458,40 @@
       <span style="background-color: #E3F7E3; color: #008900; border-radius: 8px; font-size: 12px; align-self: center; padding: 0 10px; margin-left: auto; text-align: center; line-height: 22px; white-space: nowrap; height: 22px;">Resolved</span>
     </div>
     {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if total_spans_count and not enhanced_privacy %}
+  <div id="total-spans" style="margin-bottom: 20px;">
+    <h4 class="total-count-title" style="font-weight: bold;">Total Spans</h4>
+    <h1 style="margin: 0; font-weight: bold;" class="total-count">
+      {{ total_spans_count|small_count:1 }}
+    </h1>
+    <a href="{% org_url organization '/explore/spans/' %}"
+       style="font-size: 12px; margin-bottom: 16px; display: block; font-weight: bold;">View All Spans</a>
+
+    {% if top_spans_table %}
+    <table style="width: 100%; border-collapse: collapse; margin-top: 8px;">
+      <thead>
+        <tr style="border-bottom: 1px solid #DEE7EB;">
+          <th style="font-size: 12px; text-align: left; color: #80708F; font-weight: 700; padding: 8px 0;">Span Description</th>
+          <th style="font-size: 12px; text-align: left; color: #80708F; font-weight: 700; padding: 8px 0;">Project</th>
+          <th style="font-size: 12px; text-align: right; color: #80708F; font-weight: 700; padding: 8px 0;">P95</th>
+          <th style="font-size: 12px; text-align: right; color: #80708F; font-weight: 700; padding: 8px 0;">Total Duration</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for span in top_spans_table %}
+        <tr style="border-bottom: 1px solid #DEE7EB;">
+          <td style="font-size: 14px; font-weight: 700; padding: 8px 0; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ span.name }}">{{ span.name }}</td>
+          <td style="font-size: 14px; padding: 8px 0; color: #80708F;">{{ span.project_slugs }}</td>
+          <td style="font-size: 14px; text-align: right; padding: 8px 0; color: #4674ca;">{{ span.p95|format_duration_ms }}</td>
+          <td style="font-size: 14px; text-align: right; padding: 8px 0; color: #4674ca;">{{ span.sum|format_duration_ms }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
   </div>
   {% endif %}
 
