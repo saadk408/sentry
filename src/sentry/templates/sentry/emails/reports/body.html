@@ -441,14 +441,6 @@
     {% endfor %}
   </div>
   {% endif %}
-  {% if spans_chart_url and not enhanced_privacy %}
-  <div id="top-spans">
-    <h4>Top Transactions by Duration (p95)</h4>
-    <div style="margin-bottom: 16px;">
-      <img src="{{ spans_chart_url }}" width="600" height="200" alt="Top spans p95 chart" style="max-width: 100%;" />
-    </div>
-  </div>
-  {% endif %}
   {% if past_issues|length > 0 and not enhanced_privacy %}
   <div id="past-resolved-issues">
     <h4>Resolved last week</h4>
@@ -466,6 +458,15 @@
       <span style="background-color: #E3F7E3; color: #008900; border-radius: 8px; font-size: 12px; align-self: center; padding: 0 10px; margin-left: auto; text-align: center; line-height: 22px; white-space: nowrap; height: 22px;">Resolved</span>
     </div>
     {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if spans_chart_url and not enhanced_privacy %}
+  <div id="top-spans">
+    <h4>Top Transactions by Duration (p95)</h4>
+    <div style="margin-bottom: 16px;">
+      <img src="{{ spans_chart_url }}" width="600" height="200" alt="Top spans p95 chart" style="max-width: 100%;" />
+    </div>
   </div>
   {% endif %}
 
