@@ -16,7 +16,12 @@ from sentry.issues.grouptype import (
 from sentry.models.group import Group, GroupStatus
 from sentry.models.organization import Organization
 from sentry.models.project import Project
-from sentry.tasks.summaries.utils import ONE_DAY, OrganizationReportContext, ProjectContext
+from sentry.tasks.summaries.utils import (
+    ONE_DAY,
+    SIX_HOURS,
+    OrganizationReportContext,
+    ProjectContext,
+)
 from sentry.tasks.summaries.weekly_reports import get_group_display, render_template_context
 from sentry.types.group import GroupSubStatus
 from sentry.utils import loremipsum
@@ -202,6 +207,20 @@ class DebugWeeklyReportView(MailPreviewView):
             ]
 
             ctx.projects_context_map[project.id] = project_context
+
+        span_names = ["/api/users", "/api/events", "/api/projects", "/api/issues", "/api/search"]
+        all_project_ids = set(ctx.projects_context_map.keys())
+        ctx.top_spans = [
+            {"name": name, "p95": random.uniform(50, 500), "sum": random.uniform(10000, 100000)}
+            for name in span_names
+        ]
+        ctx.top_spans_projects = {name: all_project_ids for name in span_names}
+        intervals = 28
+        for name in span_names:
+            ctx.top_spans_timeseries[name] = {
+                int(start_timestamp + i * SIX_HOURS): random.uniform(50, 500)
+                for i in range(intervals)
+            }
 
         user_id = request.user.id
         ctx.project_ownership[user_id] = {pid for pid in ctx.projects_context_map}

@@ -21,6 +21,8 @@ from taskbroker_client.worker.workerchild import ProcessingDeadlineExceeded
 
 from sentry import analytics, features
 from sentry.analytics.events.weekly_report import WeeklyReportSent
+from sentry.charts import backend as charts
+from sentry.charts.types import ChartType
 from sentry.models.group import Group, GroupStatus
 from sentry.models.grouphistory import GroupHistoryStatus
 from sentry.models.organization import Organization, OrganizationStatus
@@ -37,7 +39,12 @@ from sentry.tasks.summaries.metrics import (
 from sentry.tasks.summaries.organization_report_context_factory import (
     OrganizationReportContextFactory,
 )
-from sentry.tasks.summaries.utils import ONE_DAY, PAST_ISSUES_LINK_BOOST, OrganizationReportContext
+from sentry.tasks.summaries.utils import (
+    ONE_DAY,
+    PAST_ISSUES_LINK_BOOST,
+    TOP_SPANS_LIMIT,
+    OrganizationReportContext,
+)
 from sentry.tasks.summaries.weekly_report_cache import cache_project_metrics
 from sentry.taskworker.namespaces import reports_tasks
 from sentry.types.group import GroupSubStatus
@@ -602,6 +609,7 @@ def render_template_context(
     ctx,
     user_id: int | None,
     excluded_project_ids: set[int] | None = None,
+    spans_chart_cache: dict[frozenset[str], str | None] | None = None,
 ) -> dict[str, Any] | None:
     # Serialize ctx for template, and calculate view parameters (like graph bar heights)
     # Fetch the list of projects associated with the user.
@@ -832,6 +840,51 @@ def render_template_context(
         }
 
     show_past_issues = features.has("organizations:weekly-report-past-issues", ctx.organization)
+    show_spans_chart = (
+        features.has("organizations:weekly-report-spans-chart", ctx.organization)
+        and not ctx.organization.flags.enhanced_privacy
+    )
+
+    def top_spans_chart_url() -> str | None:
+        if not show_spans_chart or not ctx.top_spans or not charts.is_enabled():
+            return None
+
+        user_project_ids = {p.project.id for p in user_projects}
+        visible_spans = [
+            span
+            for span in ctx.top_spans
+            if ctx.top_spans_projects.get(span["name"], set()) & user_project_ids
+        ][:TOP_SPANS_LIMIT]
+
+        if not visible_spans:
+            return None
+
+        cache_key = frozenset(span["name"] for span in visible_spans)
+        if spans_chart_cache is not None and cache_key in spans_chart_cache:
+            return spans_chart_cache[cache_key]
+
+        chart_data: dict[str, Any] = {"stats": {}}
+        for i, span in enumerate(visible_spans):
+            ts_data = ctx.top_spans_timeseries.get(span["name"], {})
+            data_points = [[ts, [{"count": p95}]] for ts, p95 in sorted(ts_data.items())]
+            chart_data["stats"][span["name"]] = {
+                "data": data_points,
+                "order": i,
+            }
+
+        try:
+            url = charts.generate_chart(
+                ChartType.SLACK_DISCOVER_TOP5_PERIOD_LINE,
+                chart_data,
+                size={"width": 600, "height": 200},
+            )
+        except Exception:
+            logger.exception("weekly_report.spans_chart.generation_failed")
+            url = None
+
+        if spans_chart_cache is not None:
+            spans_chart_cache[cache_key] = url
+        return url
 
     errors_discover_query = urlencode(
         [
@@ -864,6 +917,7 @@ def render_template_context(
             "organizations:weekly-report-week-over-week-metric", ctx.organization
         ),
         "notification_settings_link": "/settings/account/notifications/reports/",
+        "spans_chart_url": top_spans_chart_url() if show_spans_chart else None,
     }
 
 
@@ -881,10 +935,13 @@ def prepare_template_context(
         ).values_list("user_id", "project_id"):
             exclusions_by_user.setdefault(exc_user_id, set()).add(exc_project_id)
 
+    spans_chart_cache: dict[frozenset[str], str | None] = {}
     user_template_context_by_user_id_list = []
     for user_id in user_ids:
         excluded = exclusions_by_user.get(user_id) if isinstance(user_id, int) else None
-        template_ctx = render_template_context(ctx, user_id, excluded_project_ids=excluded)
+        template_ctx = render_template_context(
+            ctx, user_id, excluded_project_ids=excluded, spans_chart_cache=spans_chart_cache
+        )
         if not template_ctx:
             logger.debug(
                 "Skipping report for %s to <User: %s>, no qualifying reports to deliver.",
