@@ -847,6 +847,20 @@ def render_template_context(
         ]
     )
 
+    show_spans = (
+        features.has("organizations:weekly-report-spans-chart", ctx.organization)
+        and not ctx.organization.flags.enhanced_privacy
+        and ctx.total_spans_count > 0
+    )
+    total_spans_count = 0
+    if show_spans:
+        user_project_ids = {p.project.id for p in user_projects}
+        total_spans_count = sum(
+            span["count"]
+            for span in ctx.top_spans
+            if ctx.top_spans_projects.get(span["name"], set()) & user_project_ids
+        )
+
     return {
         "organization": ctx.organization,
         "start": date_format(local_start),
@@ -864,6 +878,7 @@ def render_template_context(
             "organizations:weekly-report-week-over-week-metric", ctx.organization
         ),
         "notification_settings_link": "/settings/account/notifications/reports/",
+        "total_spans_count": total_spans_count,
     }
 
 

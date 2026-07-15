@@ -61,9 +61,10 @@ class OrganizationReportContext:
             self.projects_context_map[project.id] = ProjectContext(project)
 
         # Top spans data for the spans chart
-        self.top_spans: list[dict[str, Any]] = []  # [{name, p95, sum}, ...]
+        self.top_spans: list[dict[str, Any]] = []  # [{name, p95, sum, count}, ...]
         self.top_spans_timeseries: dict[str, dict[int, float]] = {}  # {span_name: {timestamp: p95}}
         self.top_spans_projects: dict[str, set[int]] = {}  # {span_name: set of project_ids}
+        self.total_spans_count: int = 0
 
     def __repr__(self) -> str:
         return self.projects_context_map.__repr__()
@@ -726,7 +727,7 @@ def organization_top_spans(
         result = Spans.run_table_query(
             params=snuba_params,
             query_string="is_transaction:1 has:span.name",
-            selected_columns=["span.name", "sum(span.duration)", "p95(span.duration)"],
+            selected_columns=["span.name", "sum(span.duration)", "p95(span.duration)", "count()"],
             orderby=["-sum(span.duration)"],
             offset=0,
             limit=TOP_SPANS_QUERY_LIMIT,
@@ -736,18 +737,23 @@ def organization_top_spans(
         )
 
     top_span_names = []
+    total_count = 0
     for row in result.get("data", []):
         span_name = row.get("span.name", "")
         if not span_name:
             continue
+        count = row.get("count()", 0)
         ctx.top_spans.append(
             {
                 "name": span_name,
                 "p95": row.get("p95(span.duration)", 0),
                 "sum": row.get("sum(span.duration)", 0),
+                "count": count,
             }
         )
         top_span_names.append(span_name)
+        total_count += count
+    ctx.total_spans_count = total_count
 
     if not top_span_names:
         return
