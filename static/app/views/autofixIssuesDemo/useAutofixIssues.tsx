@@ -5,6 +5,8 @@ import {
   type ExplorerAutofixState,
   getOrderedAutofixSections,
 } from 'sentry/components/events/autofix/useExplorerAutofix';
+import type {Level} from 'sentry/types/event';
+import type {PlatformKey} from 'sentry/types/platform';
 import {apiOptions, selectJsonWithHeaders} from 'sentry/utils/api/apiOptions';
 import {useOrganization} from 'sentry/utils/useOrganization';
 
@@ -91,11 +93,19 @@ export function deriveAutofixPhase(
 
 // One answered question, mirrors the run output in
 // src/sentry/api/serializers/models/seer_run.py.
-interface RunQuestion {
+export interface RunQuestion {
   answer: string;
   key: string;
   // The question text, echoed back only for user-supplied questions.
   question?: string;
+}
+
+// A pull request linked to a run (via SeerRunPullRequest), with its lifecycle
+// state from the GitHub webhook ('open' | 'merged' | 'closed' | ...).
+export interface RunPullRequest {
+  key: string;
+  mergedAt: string | null;
+  state: string | null;
 }
 
 // Subset of the runs list response we consume
@@ -104,18 +114,30 @@ export interface SeerRun {
   groupId: string | null;
   id: string;
   lastTriggeredAt: string;
+  // What triggered the run (autofix, night_shift, slack_thread, ...), or null
+  // for runs without an agent row.
+  source: string | null;
   // Present only when ?outputs is requested (and the feature is on).
   outputs?: RunQuestion[];
+  // Linked PRs with merge state. Not yet returned by the deployed API —
+  // undefined means "unknown", and consumers must degrade gracefully.
+  pullRequests?: RunPullRequest[];
 }
 
 // Subset of the issue-stream group we render.
 interface Issue {
+  // Event count over the stats period. The group serializer returns a string.
+  count: string;
   culprit: string;
   id: string;
+  lastSeen: string;
+  level: Level;
+  project: {slug: string; platform?: PlatformKey};
   seerAutofixLastTriggered: string | null;
   seerFixabilityScore: number | null;
   shortId: string;
   title: string;
+  userCount: number;
 }
 
 export interface AutofixIssue extends Issue {
@@ -124,6 +146,9 @@ export interface AutofixIssue extends Issue {
   autofixPhase: AutofixPhase | null;
   // Whether the per-group autofix state is still loading.
   autofixPhasePending: boolean;
+  // The raw per-group autofix state, for callers that need more than the
+  // derived phase (status, PR states, file patches, pending input).
+  autofixState: ExplorerAutofixState | null;
   // The most recent explorer/autofix run for this issue's group, if any.
   run: SeerRun | null;
 }
@@ -131,6 +156,12 @@ export interface AutofixIssue extends Issue {
 interface UseAutofixIssuesParams {
   cursor?: string;
   query?: string;
+  // One-shot questions asked about each run (repeatable `question` param,
+  // capped at 5 by the endpoint). Defaults to this page's demo set.
+  questions?: string[];
+  // Runs-endpoint filter to enrich issues with. Defaults to the explorer runs
+  // autofix creates; pass e.g. 'type:explorer' to include all trigger sources.
+  runsQuery?: string;
 }
 
 interface UseAutofixIssuesResult {
@@ -150,6 +181,8 @@ interface UseAutofixIssuesResult {
 export function useAutofixIssues({
   query,
   cursor,
+  questions = DEMO_QUESTIONS,
+  runsQuery: runsQueryFilter = RUNS_QUERY,
 }: UseAutofixIssuesParams): UseAutofixIssuesResult {
   const organization = useOrganization();
 
@@ -178,8 +211,8 @@ export function useAutofixIssues({
     apiOptions.as<SeerRun[]>()('/organizations/$organizationIdOrSlug/seer/runs/', {
       path: runsEnabled ? {organizationIdOrSlug: organization.slug} : skipToken,
       query: {
-        query: `${RUNS_QUERY} group:[${groupIds.join(',')}]`,
-        question: DEMO_QUESTIONS,
+        query: `${runsQueryFilter} group:[${groupIds.join(',')}]`,
+        question: questions,
       },
       staleTime: 30_000,
     })
@@ -220,11 +253,13 @@ export function useAutofixIssues({
   // deps). The map is cheap -- at most PER_PAGE rows.
   const enriched: AutofixIssue[] = issues.map((issue, i) => {
     const autofixResult = autofixResults[i];
+    const autofixState = autofixResult?.data?.autofix ?? null;
     return {
       ...issue,
       run: runByGroupId.get(issue.id) ?? null,
-      autofixPhase: deriveAutofixPhase(autofixResult?.data?.autofix ?? null),
+      autofixPhase: deriveAutofixPhase(autofixState),
       autofixPhasePending: autofixResult?.isPending ?? false,
+      autofixState,
     };
   });
 
