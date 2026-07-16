@@ -80,7 +80,9 @@ export const RUN_QUESTIONS: RunQuestionConfig[] = [
       'markdown bullets on how an engineer should take this forward (what to ' +
       'confirm in the codebase, what decision to make, whether to have Seer ' +
       'generate code), concrete and specific to this issue, never generic ' +
-      'advice. No first person; inline code allowed; no markdown headers.',
+      'advice. Every bullet must start on its own line with "- " (hyphen, ' +
+      'space) — never use the "•" character or run bullets together in one ' +
+      'paragraph. No first person; inline code allowed; no markdown headers.',
   },
 ];
 

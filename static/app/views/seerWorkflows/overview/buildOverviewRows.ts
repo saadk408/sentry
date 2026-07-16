@@ -153,6 +153,18 @@ function parseRootCause(answer: string): {answer: string; headline?: string} {
   return {answer: rootCause, headline};
 }
 
+// The model sometimes emits inline "•" bullets run together in one paragraph;
+// markdown only renders a list when each item is its own "- " line.
+function normalizeBulletList(answer: string): string {
+  if (!answer.includes('•')) {
+    return answer;
+  }
+  const [head = '', ...items] = answer.split(/\s*•\s+/);
+  return [head.trim(), ...items.map(item => `- ${item.trim()}`)]
+    .filter(Boolean)
+    .join('\n');
+}
+
 function buildAnalysis(outputs: RunQuestion[] | undefined): {
   entries: RunAnalysisEntry[];
   headline?: string;
@@ -175,6 +187,8 @@ function buildAnalysis(outputs: RunQuestion[] | undefined): {
       const rootCause = parseRootCause(output.answer);
       headline = rootCause.headline;
       answer = rootCause.answer;
+    } else if (config.key === 'reviewer_notes') {
+      answer = normalizeBulletList(output.answer);
     }
     entries.push({
       key: config.key,

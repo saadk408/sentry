@@ -121,7 +121,9 @@ describe('AutofixOverview', () => {
             {
               key: 'user_3',
               question: RUN_QUESTIONS[3]!.prompt,
-              answer: '- Confirm the fallback header does not leak the key.',
+              // Inline "•" bullets — the normalizer must split them into a list.
+              answer:
+                '• Confirm the fallback header does not leak the key. • Verify the proxy accepts both headers.',
             },
           ],
         },
@@ -207,11 +209,14 @@ describe('AutofixOverview', () => {
     expect(
       screen.getByText('Commit c5bb895 stopped sending the Authorization header.')
     ).toBeVisible();
-    // Code was drafted, so the notes section is a review checklist.
+    // Code was drafted, so the notes section is a review checklist, with the
+    // inline-bullet answer normalized into separate list items.
     expect(screen.getByText('Review checklist')).toBeVisible();
     expect(
       screen.getByText('Confirm the fallback header does not leak the key.')
     ).toBeVisible();
+    expect(screen.getByText('Verify the proxy accepts both headers.')).toBeVisible();
+    expect(screen.queryByText(/•/)).not.toBeInTheDocument();
     // Fixability lives in the expanded state as a bucketed tag (0.75 > 0.7).
     expect(screen.getByText('High fixability')).toBeVisible();
   });
