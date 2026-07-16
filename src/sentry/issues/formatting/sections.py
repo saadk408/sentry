@@ -125,6 +125,21 @@ def request_section(model: EventObject, fmt: Formatter, limits: Limits) -> str:
     return fmt.block("Request", "\n".join(parts))
 
 
+def csp_section(model: EventObject, fmt: Formatter, limits: Limits) -> str:
+    csp = model.csp
+    if not csp:
+        return ""
+    fields = {
+        "Blocked": csp.blocked_uri,
+        "Directive": csp.effective_directive,
+        "Document": csp.document_uri,
+    }
+    present = [fmt.field(k, v) for k, v in fields.items() if v]
+    if not present:
+        return ""
+    return fmt.block("CSP", "\n".join(present))
+
+
 def tags_section(model: EventObject, fmt: Formatter, limits: Limits) -> str:
     if not model.tags:
         return ""
@@ -183,6 +198,13 @@ def spans_section(model: EventObject, fmt: Formatter, limits: Limits) -> str:
     return fmt.block("Span Evidence", _truncate("\n".join(lines), limits.max_spans_chars))
 
 
+def evidence_section(model: EventObject, fmt: Formatter, limits: Limits) -> str:
+    if not model.evidence:
+        return ""
+    body = "\n".join(fmt.field(name, value) for name, value in model.evidence)
+    return fmt.block("Evidence", body)
+
+
 def contexts_section(model: EventObject, fmt: Formatter, limits: Limits) -> str:
     groups: list[str] = []
     for name, data in model.contexts.items():
@@ -200,8 +222,10 @@ EVENT_SECTIONS: list[SectionFn] = [
     title_section,
     message_section,
     exceptions_section,
+    csp_section,
     threads_section,
     spans_section,
+    evidence_section,
     breadcrumbs_section,
     request_section,
     tags_section,

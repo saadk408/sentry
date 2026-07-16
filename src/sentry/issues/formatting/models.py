@@ -64,6 +64,13 @@ class RequestDetails(BaseModel):
     # not including cookies, headers, env, query, etc.
 
 
+class CspDetails(BaseModel):
+    # serialized csp entry is already snake_case; original_policy is dropped as noise
+    effective_directive: str | None = None
+    blocked_uri: str | None = None
+    document_uri: str | None = None
+
+
 class EvidenceSpan(BaseModel):
     class Config:
         allow_population_by_field_name = True
@@ -97,10 +104,13 @@ class EventObject(BaseModel):
     threads: list[ThreadDetails] = []
     breadcrumbs: list[Breadcrumb] = []
     request: RequestDetails | None = None
+    csp: CspDetails | None = None
     tags: list[tuple[str, str | None]] = []
     contexts: dict[str, dict[str, Any]] = {}
     user: UserDetails | None = None
     spans: list[EvidenceSpan] = []
+    # occurrence evidence (name/value pairs) for perf & generic/regression issues
+    evidence: list[tuple[str, str]] = []
 
     # issue-level fields (optional; filled when formatting from an issue)
     short_id: str | None = None
