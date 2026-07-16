@@ -11,8 +11,15 @@ logger = logging.getLogger(__name__)
 
 BATCH_PROCESSING_DEADLINE = timedelta(seconds=30)  # taskworker hard kill timeout
 BATCH_RETRIGGER_TIMEOUT = timedelta(seconds=20)  # self-reschedule before the hard kill
+
 _BATCH_TASK_KEY = "process_project_derived_data_batch"
 _REBUILD_BATCH_TASK_KEY = "rebuild_project_derived_data_batch"
+_REBUILD_GROUP_TASK_KEY = "rebuild_group_derived_data"
+
+# Cap self-rescheduling rebuilds to avoid infinite loops on very large groups.
+_MAX_REBUILD_RUNS = 20
+# Hard limit on group IDs loaded per project-level task to bound memory.
+_MAX_PROJECT_GROUPS = 10_000
 
 
 @instrumented_task(
@@ -37,15 +44,49 @@ def process_group_log_task(group_id: int, **kwargs: object) -> None:
     silo_mode=SiloMode.CELL,
 )
 def rebuild_group_derived_data_task(
-    group_id: int, version: int | None = None, **kwargs: object
+    group_id: int,
+    derived_id: int | None = None,
+    prior_runs: int = 0,
+    **kwargs: object,
 ) -> None:
     """Build a new GroupDerivedData row from scratch and promote it to live."""
+    from taskbroker_client.state import current_task
+
     from sentry.issues.derived.processing import GroupLogTimeout, build_and_promote_derived_data
+    from sentry.taskworker.selfchain_idempotency import already_spawned, mark_spawned
+
+    task_state = current_task()
+    activation_id = task_state.id if task_state else None
+    if activation_id and already_spawned(_REBUILD_GROUP_TASK_KEY, activation_id):
+        logger.info(
+            "rebuild_group_derived_data_task.duplicate_skipped",
+            extra={"group_id": group_id, "activation_id": activation_id},
+        )
+        metrics.incr(
+            "taskworker.selfchain.duplicate_skipped",
+            tags={"task": _REBUILD_GROUP_TASK_KEY},
+        )
+        return
 
     try:
-        build_and_promote_derived_data(group_id, version=version)
+        build_and_promote_derived_data(group_id, derived_id=derived_id)
     except GroupLogTimeout as e:
-        rebuild_group_derived_data_task.delay(group_id, version=e.version)
+        if prior_runs + 1 >= _MAX_REBUILD_RUNS:
+            logger.error(
+                "rebuild_group_derived_data_task.max_runs_exceeded",
+                extra={
+                    "group_id": group_id,
+                    "derived_id": e.derived_id,
+                    "prior_runs": prior_runs + 1,
+                },
+            )
+            metrics.incr("issues.derived.rebuild_max_runs_exceeded", sample_rate=1.0)
+            return
+        rebuild_group_derived_data_task.delay(
+            group_id, derived_id=e.derived_id, prior_runs=prior_runs + 1
+        )
+        if activation_id:
+            mark_spawned(_REBUILD_GROUP_TASK_KEY, activation_id)
 
 
 @instrumented_task(
@@ -68,15 +109,25 @@ def process_project_derived_data(project_id: int, **kwargs: object) -> None:
     batch_size = options.get("issues.derived.project-batch-size")
     max_tasks = options.get("issues.derived.project-max-tasks")
 
+    # TODO: support very large projects via paginated iteration
     group_ids = list(
         Group.objects.filter(project_id=project_id)
         .exclude(Exists(GroupDerivedData.objects.filter(group_id=OuterRef("id"), is_live=True)))
         .order_by("id")
-        .values_list("id", flat=True)
+        .values_list("id", flat=True)[:_MAX_PROJECT_GROUPS]
     )
 
     if not group_ids:
         return
+
+    if len(group_ids) >= _MAX_PROJECT_GROUPS:
+        logger.error(
+            "process_project_derived_data.too_many_groups",
+            extra={
+                "project_id": project_id,
+                "limit": _MAX_PROJECT_GROUPS,
+            },
+        )
 
     starts = [group_ids[i] for i in range(0, len(group_ids), batch_size)]
     ends = starts[1:] + [group_ids[-1] + 1]
@@ -243,12 +294,24 @@ def rebuild_project_derived_data(project_id: int, **kwargs: object) -> None:
     batch_size = options.get("issues.derived.project-batch-size")
     max_tasks = options.get("issues.derived.project-max-tasks")
 
+    # TODO: support very large projects via paginated iteration
     group_ids = list(
-        Group.objects.filter(project_id=project_id).order_by("id").values_list("id", flat=True)
+        Group.objects.filter(project_id=project_id)
+        .order_by("id")
+        .values_list("id", flat=True)[:_MAX_PROJECT_GROUPS]
     )
 
     if not group_ids:
         return
+
+    if len(group_ids) >= _MAX_PROJECT_GROUPS:
+        logger.error(
+            "rebuild_project_derived_data.too_many_groups",
+            extra={
+                "project_id": project_id,
+                "limit": _MAX_PROJECT_GROUPS,
+            },
+        )
 
     starts = [group_ids[i] for i in range(0, len(group_ids), batch_size)]
     ends = starts[1:] + [group_ids[-1] + 1]
@@ -336,12 +399,13 @@ def rebuild_project_derived_data_batch(
     rescheduled = False
 
     for group_id in group_ids:
+        remaining = timedelta(seconds=timeout_seconds - (time.monotonic() - start))
         try:
-            build_and_promote_derived_data(group_id)
+            build_and_promote_derived_data(group_id, time_limit=remaining)
         except GroupLogTimeout as e:
-            # Re-enqueue the single group with its version so the
+            # Re-enqueue the single group with its id so the
             # partially-drained row is resumed, then continue the batch.
-            rebuild_group_derived_data_task.delay(group_id, version=e.version)
+            rebuild_group_derived_data_task.delay(group_id, derived_id=e.derived_id)
         processed += 1
 
         if time.monotonic() - start >= timeout_seconds:

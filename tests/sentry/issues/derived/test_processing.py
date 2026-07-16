@@ -579,15 +579,15 @@ class PromoteToLiveTest(TestCase):
                 build_and_promote_derived_data(group.id)
 
         assert exc_info.value.group_id == group.id
-        assert exc_info.value.version is not None
+        assert exc_info.value.derived_id is not None
 
         # The non-live row still exists for resumption
-        version = exc_info.value.version
-        row = GroupDerivedData.objects.get(group_id=group.id, is_live=False, version=version)
+        derived_id = exc_info.value.derived_id
+        row = GroupDerivedData.objects.get(id=derived_id, is_live=False)
         assert row is not None
 
-        # Resuming with that version completes the promotion
-        build_and_promote_derived_data(group.id, version=version)
+        # Resuming with that derived_id completes the promotion
+        build_and_promote_derived_data(group.id, derived_id=derived_id)
         promoted = GroupDerivedData.objects.get(group_id=group.id, is_live=True)
         assert promoted.id == row.id
         assert promoted.view_count == 5

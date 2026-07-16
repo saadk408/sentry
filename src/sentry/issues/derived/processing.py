@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import IntegrityError, router, transaction
-from django.db.models import Max, Q
+from django.db.models import Q
 
 from sentry import options
 from sentry.issues.derived.aggregators import AGGREGATORS
@@ -18,10 +18,6 @@ from sentry.utils import metrics
 
 logger = logging.getLogger(__name__)
 
-# Pipeline with current aggregators. Versioned because in principle
-# we may want to change it in place and correlate that to existing derived data
-# for invalidation purposes.
-# TODO: Shouldn't it be versioned by a feature set hash? To be sorted out later.
 PIPELINE: Pipeline[GroupActionLogEntry] = Pipeline(AGGREGATORS, version=1)
 
 DEFAULT_BATCH_SIZE = 1000
@@ -158,9 +154,9 @@ def _process_batch(
 class GroupLogTimeout(Exception):
     """Raised when processing cannot finish within its time budget."""
 
-    def __init__(self, group_id: int, version: int | None = None) -> None:
+    def __init__(self, group_id: int, derived_id: int | None = None) -> None:
         self.group_id = group_id
-        self.version = version
+        self.derived_id = derived_id
         super().__init__(group_id)
 
 
@@ -179,10 +175,10 @@ def _drain_log(
     reached and more entries remain. The limit is checked between batches,
     so a single slow batch can exceed it.
     """
-    deadline = datetime.now(UTC) + time_limit
+    deadline = time.monotonic() + time_limit.total_seconds()
     p = pipeline or PIPELINE
     while _process_batch(p, derived, batch_size):
-        if datetime.now(UTC) >= deadline:
+        if time.monotonic() >= deadline:
             return False
     return True
 
@@ -279,24 +275,11 @@ def trigger_group_log_processing(group_id: int, *, strategy: ProcessingStrategy)
 # ---------------------------------------------------------------------------
 
 
-def _max_entry_id(group_id: int) -> int:
-    return (
-        GroupActionLogEntry.objects.filter(group_id=group_id).aggregate(max_id=Max("id"))["max_id"]
-        or 0
-    )
-
-
 def create_processing_row(group_id: int) -> GroupDerivedData:
-    """Create a new non-live GroupDerivedData row for background processing.
-
-    The version is set to the current max GroupActionLogEntry id for the group,
-    capturing the log state at the time processing starts.
-    """
-    version = _max_entry_id(group_id)
+    """Create a new non-live GroupDerivedData row for background processing."""
     return GroupDerivedData.objects.create(
         group_id=group_id,
         is_live=False,
-        version=version,
         cursor_date=EPOCH,
         cursor_id=0,
         data={},
@@ -328,7 +311,9 @@ def promote_to_live(candidate: GroupDerivedData) -> PromotionResult:
             ).first()
 
             if current_live is not None:
-                if candidate.version < current_live.version:
+                # A candidate older than the live row means a concurrent or
+                # earlier build is trying to replace a newer one — reject it.
+                if candidate.id < current_live.id:
                     return PromotionResult.SUPERSEDED
                 if (candidate.cursor_date, candidate.cursor_id) < (
                     current_live.cursor_date,
@@ -353,16 +338,14 @@ def promote_to_live(candidate: GroupDerivedData) -> PromotionResult:
 MAX_PROMOTION_ATTEMPTS = 5
 
 
-def _get_or_create_processing_row(group_id: int, version: int | None) -> GroupDerivedData | None:
-    """Resume an existing non-live row by version, or create a new one.
+def _get_or_create_processing_row(group_id: int, derived_id: int | None) -> GroupDerivedData | None:
+    """Resume an existing non-live row by id, or create a new one.
 
-    Returns None if creation fails (IntegrityError) or the requested version
+    Returns None if creation fails (IntegrityError) or the requested row
     no longer exists (cleaned up).
     """
-    if version is not None:
-        return GroupDerivedData.objects.filter(
-            group_id=group_id, is_live=False, version=version
-        ).first()
+    if derived_id is not None:
+        return GroupDerivedData.objects.filter(id=derived_id, is_live=False).first()
     try:
         return create_processing_row(group_id)
     except IntegrityError:
@@ -372,13 +355,14 @@ def _get_or_create_processing_row(group_id: int, version: int | None) -> GroupDe
 def build_and_promote_derived_data(
     group_id: int,
     batch_size: int = DEFAULT_BATCH_SIZE,
-    version: int | None = None,
+    derived_id: int | None = None,
+    time_limit: timedelta = DEFAULT_TIME_LIMIT,
 ) -> None:
     """Create (or resume) a non-live row, drain the log into it, and promote.
 
-    When *version* is provided, an existing non-live row with that version is
-    resumed instead of creating a new one. This allows the task to be
-    re-enqueued and pick up where it left off after a time-limited drain.
+    When *derived_id* is provided, an existing non-live row is resumed instead
+    of creating a new one. This allows the task to be re-enqueued and pick up
+    where it left off after a time-limited drain.
 
     If promotion fails because the live row's cursor is ahead (it received
     incremental updates while we were building), we drain additional entries
@@ -388,22 +372,22 @@ def build_and_promote_derived_data(
     Retries are bounded to avoid starvation if the live row is being updated
     faster than we can catch up. On exhaustion the caller should re-enqueue.
 
-    Raises GroupLogTimeout (with ``version`` set) if the time-limited drain
+    Raises GroupLogTimeout (with ``derived_id`` set) if the time-limited drain
     could not finish, so the caller can decide its own retry strategy.
     """
-    derived = _get_or_create_processing_row(group_id, version)
+    derived = _get_or_create_processing_row(group_id, derived_id)
     if derived is None:
         logger.info(
             "issues.derived.build_and_promote.no_row",
-            extra={"group_id": group_id, "version": version},
+            extra={"group_id": group_id, "derived_id": derived_id},
         )
         return
 
     result = PromotionResult.CURSOR_BEHIND
     for attempt in range(MAX_PROMOTION_ATTEMPTS):
-        drained = _drain_log(derived, batch_size)
+        drained = _drain_log(derived, batch_size, time_limit=time_limit)
         if not drained:
-            raise GroupLogTimeout(group_id, version=derived.version)
+            raise GroupLogTimeout(group_id, derived_id=derived.id)
         result = promote_to_live(derived)
         if result is PromotionResult.PROMOTED:
             logger.info(
