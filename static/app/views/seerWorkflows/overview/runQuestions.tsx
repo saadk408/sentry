@@ -15,8 +15,8 @@ interface RunQuestionConfig {
   prompt: string;
 }
 
-// The five one-shot questions the overview asks about each run (the endpoint
-// caps user questions at 5). Order matters: answers come back positionally.
+// The one-shot questions the overview asks about each run (the endpoint caps
+// user questions at 5). Order matters: answers come back positionally.
 export const RUN_QUESTIONS: RunQuestionConfig[] = [
   {
     key: 'root_cause',
@@ -51,22 +51,6 @@ export const RUN_QUESTIONS: RunQuestionConfig[] = [
       'allowed; no headers, bullets, or code blocks.',
   },
   {
-    key: 'needs_you',
-    label: t('Needs you'),
-    placement: 'details',
-    prompt:
-      'Start your answer with exactly one of DECIDE|, VERIFY|, REVIEW|, or ' +
-      'PROVIDE| (the category in capitals, then a pipe), followed by one ' +
-      'imperative sentence of at most 16 words stating what the human must do ' +
-      'to move this run forward. Pick DECIDE for a policy or design choice, ' +
-      'VERIFY for confirming a behavior or assumption, REVIEW for reviewing ' +
-      'code or a pull request, PROVIDE for supplying missing information. Be ' +
-      'specific about what to look at or choose, not a generic action, and do ' +
-      'not start the sentence with the category word itself. If the run is ' +
-      'still working or nothing is needed from a human, return an empty ' +
-      'string. No markdown formatting other than inline code.',
-  },
-  {
     key: 'fix_summary',
     label: t('Proposed fix'),
     placement: 'face',
@@ -83,13 +67,20 @@ export const RUN_QUESTIONS: RunQuestionConfig[] = [
   },
   {
     key: 'reviewer_notes',
-    label: t('What to double-check'),
+    // Placeholder — the card derives the display label from whether the run
+    // drafted code: "Review checklist" vs "Next steps".
+    label: t('Notes'),
     placement: 'details',
     prompt:
-      'List the specific things a reviewer should double-check before trusting ' +
-      "or merging this run's fix: risks, untested paths, or assumptions the run " +
-      'made. At most three short markdown bullet points, each under 20 words. ' +
-      'If the run produced no fix to review, return an empty string.',
+      'If this run drafted code changes or opened a pull request: a review ' +
+      'checklist — three to five markdown bullets a reviewer should verify ' +
+      'before trusting or merging the change, each naming the specific risk, ' +
+      'assumption, or untested path and why it matters (at most 25 words per ' +
+      'bullet). If the run produced no code: next steps instead — two to four ' +
+      'markdown bullets on how an engineer should take this forward (what to ' +
+      'confirm in the codebase, what decision to make, whether to have Seer ' +
+      'generate code), concrete and specific to this issue, never generic ' +
+      'advice. No first person; inline code allowed; no markdown headers.',
   },
 ];
 

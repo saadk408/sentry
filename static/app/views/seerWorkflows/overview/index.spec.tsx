@@ -116,15 +116,13 @@ describe('AutofixOverview', () => {
             {
               key: 'user_2',
               question: RUN_QUESTIONS[2]!.prompt,
-              answer: 'VERIFY|Verify the fallback header does not leak the key.',
+              answer: 'Restores the Authorization header as a fallback.',
             },
             {
               key: 'user_3',
               question: RUN_QUESTIONS[3]!.prompt,
-              answer: 'Restores the Authorization header as a fallback.',
+              answer: '- Confirm the fallback header does not leak the key.',
             },
-            // Not applicable — prompts ask for an empty string; no section renders.
-            {key: 'user_4', question: RUN_QUESTIONS[4]!.prompt, answer: ''},
           ],
         },
       ],
@@ -197,13 +195,10 @@ describe('AutofixOverview', () => {
     // The timestamp is labeled as run activity.
     expect(screen.getByText(/^updated/)).toBeInTheDocument();
 
-    // Root cause, needs-you, and the short id stay behind the disclosure.
+    // Root cause, notes, and the short id stay behind the disclosure.
     const disclosure = screen.getByRole('button', {name: 'Full analysis'});
     expect(
       screen.getByText('Commit c5bb895 stopped sending the Authorization header.')
-    ).not.toBeVisible();
-    expect(
-      screen.getByText('Verify the fallback header does not leak the key.')
     ).not.toBeVisible();
     expect(screen.getByText('Issue PROJ-1')).not.toBeVisible();
 
@@ -215,19 +210,16 @@ describe('AutofixOverview', () => {
     expect(
       screen.getByText('Commit c5bb895 stopped sending the Authorization header.')
     ).toBeVisible();
-    // The needs-you category prefix parses into a tag; the sentence drops it.
-    expect(screen.getByText('Verify')).toBeVisible();
+    // Code was drafted, so the notes section is a review checklist.
+    expect(screen.getByText('Review checklist')).toBeVisible();
     expect(
-      screen.getByText('Verify the fallback header does not leak the key.')
+      screen.getByText('Confirm the fallback header does not leak the key.')
     ).toBeVisible();
-    expect(screen.queryByText(/VERIFY\|/)).not.toBeInTheDocument();
     // Fixability lives in the expanded state as a bucketed tag (0.75 > 0.7).
     expect(screen.getByText('High fixability')).toBeVisible();
-    // Empty answers mean "not applicable" and render no section.
-    expect(screen.queryByText('What to double-check')).not.toBeInTheDocument();
   });
 
-  it('falls back to the plain label when the needs-you prefix is missing', async () => {
+  it('shows Diagnosis and Next steps when no code was drafted', async () => {
     MockApiClient.addMockResponse({
       url: `/organizations/${organization.slug}/seer/runs/`,
       body: [
@@ -245,9 +237,9 @@ describe('AutofixOverview', () => {
               answer: 'A mechanism sentence without any drafted fix.',
             },
             {
-              key: 'user_2',
-              question: RUN_QUESTIONS[2]!.prompt,
-              answer: 'Just a plain sentence.',
+              key: 'user_3',
+              question: RUN_QUESTIONS[3]!.prompt,
+              answer: '- Decide whether Seer should generate a fix.',
             },
           ],
         },
@@ -270,8 +262,10 @@ describe('AutofixOverview', () => {
 
     await userEvent.click(screen.getByRole('button', {name: 'Full analysis'}));
 
-    expect(screen.getByText('Just a plain sentence.')).toBeVisible();
-    expect(screen.getByText('Needs you')).toBeVisible();
+    // …and the notes section is Next steps rather than a review checklist.
+    expect(screen.getByText('Next steps')).toBeVisible();
+    expect(screen.getByText('Decide whether Seer should generate a fix.')).toBeVisible();
+    expect(screen.queryByText('Review checklist')).not.toBeInTheDocument();
   });
 
   it('toggles quick filters from the stat cards via the URL', async () => {

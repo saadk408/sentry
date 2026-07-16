@@ -5,22 +5,13 @@ import {LinkButton} from '@sentry/scraps/button';
 import {Disclosure} from '@sentry/scraps/disclosure';
 import {Container, Flex, Stack} from '@sentry/scraps/layout';
 import {Link} from '@sentry/scraps/link';
-import {Heading, Text} from '@sentry/scraps/text';
+import {Text} from '@sentry/scraps/text';
 import {Tooltip} from '@sentry/scraps/tooltip';
 
 import {ErrorLevel} from 'sentry/components/events/errorLevel';
 import ProjectBadge from 'sentry/components/idBadge/projectBadge';
 import {TimeSince} from 'sentry/components/timeSince';
-import {
-  IconChat,
-  IconCheckmark,
-  IconCommit,
-  IconMerge,
-  IconPullRequest,
-  IconQuestion,
-  IconSearch,
-  IconShow,
-} from 'sentry/icons';
+import {IconCommit, IconMerge, IconPullRequest, IconSearch} from 'sentry/icons';
 import {t, tn} from 'sentry/locale';
 import {formatAbbreviatedNumber} from 'sentry/utils/formatters';
 import {ellipsize} from 'sentry/utils/string/ellipsize';
@@ -28,19 +19,7 @@ import {SeerMarkdown} from 'sentry/views/seerExplorer/components/chat/shared';
 
 import {ATTENTION_META, AttentionBadge, getAttentionReason} from './attentionBadge';
 import {TriggerBadge} from './triggerBadge';
-import type {NeedsYouAction, OverviewRow, PatchStats} from './types';
-
-// Icon + label per parsed needs-you category, so the kind of human action is
-// scannable across cards without reading the sentence.
-const ACTION_TYPE_META: Record<
-  NeedsYouAction,
-  {Icon: typeof IconQuestion; label: string}
-> = {
-  decide: {Icon: IconQuestion, label: t('Decide')},
-  verify: {Icon: IconCheckmark, label: t('Verify')},
-  review: {Icon: IconShow, label: t('Review')},
-  provide: {Icon: IconChat, label: t('Provide')},
-};
+import type {OverviewRow, PatchStats} from './types';
 
 // Card titles read as content, not navigation: inherit the bold primary text
 // color instead of the global anchor accent, revealing linkness on hover.
@@ -305,28 +284,24 @@ export function IssueCard({orgSlug, row}: {orgSlug: string; row: OverviewRow}) {
                         <FixabilityTag score={row.fixabilityScore} />
                       )}
                     </Flex>
-                    {detailEntries.map(entry => {
-                      const action = entry.actionType
-                        ? ACTION_TYPE_META[entry.actionType]
-                        : null;
-                      return (
-                        <Stack key={entry.key} gap="xs">
-                          <Flex gap="sm" align="center">
-                            <Heading as="h4" size="xs">
-                              {entry.label}
-                            </Heading>
-                            {action && (
-                              <Tag variant="info" icon={<action.Icon />}>
-                                {action.label}
-                              </Tag>
-                            )}
-                          </Flex>
-                          <Text size="sm" density="comfortable" as="div">
-                            <SeerMarkdown raw={entry.answer} />
-                          </Text>
-                        </Stack>
-                      );
-                    })}
+                    {detailEntries.map(entry => (
+                      <Stack key={entry.key} gap="xs">
+                        {/* Same label voice as the body block, so the expanded
+                            content reads as part of one system. The notes
+                            section's label depends on whether code exists:
+                            reviewing a change vs deciding how to proceed. */}
+                        <Text size="xs" bold uppercase variant="muted">
+                          {entry.key === 'reviewer_notes'
+                            ? isFixBody
+                              ? t('Review checklist')
+                              : t('Next steps')
+                            : entry.label}
+                        </Text>
+                        <Text size="sm" density="comfortable" as="div">
+                          <SeerMarkdown raw={entry.answer} />
+                        </Text>
+                      </Stack>
+                    ))}
                   </Stack>
                 </Disclosure.Content>
               </Disclosure>

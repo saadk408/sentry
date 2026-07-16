@@ -30,10 +30,6 @@ export type AttentionReason =
 // visible) or inside the collapsed "Full analysis" disclosure.
 export type AnswerPlacement = 'face' | 'details';
 
-// The kind of human action a needs-you answer asks for, parsed from the
-// answer's category prefix (see the needs_you prompt in ./runQuestions).
-export type NeedsYouAction = 'decide' | 'verify' | 'review' | 'provide';
-
 // One answered run question joined to its question config (see ./runQuestions)
 // — the label renders, never the raw prompt.
 export interface RunAnalysisEntry {
@@ -41,8 +37,6 @@ export interface RunAnalysisEntry {
   key: string;
   label: string;
   placement: AnswerPlacement;
-  // Set only on the needs_you entry, when its prefix parsed cleanly.
-  actionType?: NeedsYouAction;
 }
 
 // One changed file within the run's drafted diff.

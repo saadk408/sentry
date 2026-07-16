@@ -15,7 +15,6 @@ import {mapRunSourceToTrigger} from './triggerBadge';
 import type {
   AutofixOutcome,
   AutofixRunStatus,
-  NeedsYouAction,
   OverviewRow,
   PatchStats,
   RunAnalysisEntry,
@@ -134,22 +133,6 @@ function extractPendingQuestion(state: ExplorerAutofixState | null): string | un
  * returned in question order. Empty answers mean "not applicable" (the prompts
  * ask for an empty string) and are dropped.
  */
-// The needs_you prompt asks for a "CATEGORY|sentence" answer; tolerate leading
-// markdown emphasis the model might add around the category.
-const NEEDS_YOU_PREFIX = /^[\s*_]*(DECIDE|VERIFY|REVIEW|PROVIDE)[\s*_]*\|\s*(.+)$/s;
-
-function parseNeedsYou(answer: string): {answer: string; actionType?: NeedsYouAction} {
-  const match = answer.match(NEEDS_YOU_PREFIX);
-  if (!match) {
-    // Fallback: render the whole answer as plain text with the generic label.
-    return {answer};
-  }
-  return {
-    actionType: match[1]!.toLowerCase() as NeedsYouAction,
-    answer: match[2]!,
-  };
-}
-
 // A headline longer than this means the model ignored the 14-word instruction
 // (or the pipe landed somewhere unintended) — treat it as a parse failure.
 const MAX_HEADLINE_LENGTH = 140;
@@ -189,21 +172,17 @@ function buildAnalysis(outputs: RunQuestion[] | undefined): {
     if (!config || !output.answer) {
       return;
     }
-    let parsed: {answer: string; actionType?: NeedsYouAction} = {
-      answer: output.answer,
-    };
-    if (config.key === 'needs_you') {
-      parsed = parseNeedsYou(output.answer);
-    } else if (config.key === 'root_cause') {
+    let answer = output.answer;
+    if (config.key === 'root_cause') {
       const rootCause = parseRootCause(output.answer);
       headline = rootCause.headline;
-      parsed = {answer: rootCause.answer};
+      answer = rootCause.answer;
     }
     entries.push({
       key: config.key,
       label: config.label,
       placement: config.placement,
-      ...parsed,
+      answer,
     });
   });
   return {entries, headline};
