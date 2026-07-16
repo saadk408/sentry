@@ -23,6 +23,7 @@ import {
 } from 'sentry/icons';
 import {t, tn} from 'sentry/locale';
 import {formatAbbreviatedNumber} from 'sentry/utils/formatters';
+import {ellipsize} from 'sentry/utils/string/ellipsize';
 import {SeerMarkdown} from 'sentry/views/seerExplorer/components/chat/shared';
 
 import {ATTENTION_META, AttentionBadge, getAttentionReason} from './attentionBadge';
@@ -141,7 +142,19 @@ export function IssueCard({orgSlug, row}: {orgSlug: string; row: OverviewRow}) {
                   the expanded details. */}
             <Text bold ellipsis>
               {row.headline ? (
-                <Tooltip title={row.title}>
+                <Tooltip
+                  maxWidth={480}
+                  title={
+                    <Stack gap="2xs">
+                      <Text size="xs" bold uppercase variant="muted" align="left">
+                        {t('Original issue title')}
+                      </Text>
+                      <Text size="xs" align="left">
+                        {ellipsize(row.title, 200)}
+                      </Text>
+                    </Stack>
+                  }
+                >
                   <TitleLink to={issueUrl}>{row.headline}</TitleLink>
                 </Tooltip>
               ) : (
