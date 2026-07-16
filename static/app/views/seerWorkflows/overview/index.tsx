@@ -242,7 +242,7 @@ export default function AutofixOverview() {
           <Grid
             columns={{xs: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)'}}
             gap="md"
-            marginBottom="xs"
+            marginBottom="md"
           >
             <StatCard
               Icon={IconUser}
@@ -289,12 +289,6 @@ export default function AutofixOverview() {
               }
             />
           </Grid>
-          <Container marginBottom="md">
-            <Text as="p" size="xs" variant="muted" align="right">
-              {t('Counts reflect the %s issues loaded below.', sortedRows.length)}
-            </Text>
-          </Container>
-
           <Container
             background="secondary"
             border="muted"
