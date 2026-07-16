@@ -17,7 +17,7 @@ import type {AutofixTrigger} from './types';
 export const TRIGGER_META: Record<
   AutofixTrigger,
   {
-    Icon: React.ComponentType<{size?: 'xs' | 'sm' | 'md'}>;
+    Icon: typeof IconUser;
     description: string;
     label: string;
   }
@@ -87,9 +87,7 @@ export function TriggerBadge({
     return (
       <Tooltip title={t('Triggered by %s.', rawSource)} skipWrapper>
         <Flex gap="xs" align="center">
-          <Text variant="muted" aria-hidden>
-            <IconSeer size="xs" />
-          </Text>
+          <IconSeer size="xs" variant="muted" aria-hidden />
           <Text size="sm">{rawSource}</Text>
         </Flex>
       </Tooltip>
@@ -100,9 +98,7 @@ export function TriggerBadge({
   return (
     <Tooltip title={meta.description} skipWrapper>
       <Flex gap="xs" align="center">
-        <Text variant="muted" aria-hidden>
-          <meta.Icon size="xs" />
-        </Text>
+        <meta.Icon size="xs" variant="muted" aria-hidden />
         <Text size="sm">{meta.label}</Text>
       </Flex>
     </Tooltip>

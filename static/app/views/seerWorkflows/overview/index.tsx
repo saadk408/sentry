@@ -298,9 +298,7 @@ export default function AutofixOverview() {
           >
             <Flex justify="between" align="center" gap="md" wrap="wrap">
               <Flex gap="md" align="center" wrap="wrap">
-                <Text variant="muted" aria-hidden>
-                  <IconFilter size="sm" />
-                </Text>
+                <IconFilter size="sm" variant="muted" aria-hidden />
                 <CompactSelect
                   multiple
                   value={outcomeFilter}
@@ -457,7 +455,7 @@ function StatCard({
   onClick,
   extra,
 }: {
-  Icon: React.ComponentType<{size?: 'xs' | 'sm' | 'md'}>;
+  Icon: typeof IconUser;
   iconVariant: StatIconVariant;
   isActive: boolean;
   label: string;
@@ -475,11 +473,7 @@ function StatCard({
     >
       <Flex direction="column" gap="xs">
         <Flex gap="xs" align="center">
-          <Flex align="center" justify="center" aria-hidden>
-            <Text variant={iconVariant}>
-              <Icon size="xs" />
-            </Text>
-          </Flex>
+          <Icon size="xs" variant={iconVariant} aria-hidden />
           <Text size="xs" variant="muted" uppercase>
             {label}
           </Text>

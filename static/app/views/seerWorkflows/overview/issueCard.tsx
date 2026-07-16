@@ -255,9 +255,11 @@ export function IssueCard({orgSlug, row}: {orgSlug: string; row: OverviewRow}) {
           >
             <Stack gap="xs">
               <Flex gap="xs" align="center">
-                <Text variant={isFixBody ? 'success' : 'muted'} aria-hidden>
-                  {isFixBody ? <IconCommit size="xs" /> : <IconSearch size="xs" />}
-                </Text>
+                {isFixBody ? (
+                  <IconCommit size="xs" variant="success" aria-hidden />
+                ) : (
+                  <IconSearch size="xs" variant="muted" aria-hidden />
+                )}
                 <Text size="xs" bold uppercase variant={isFixBody ? 'success' : 'muted'}>
                   {isFixBody ? t('Proposed fix') : t('Diagnosis')}
                 </Text>
@@ -303,19 +305,33 @@ export function IssueCard({orgSlug, row}: {orgSlug: string; row: OverviewRow}) {
                             ? isFixBody
                               ? {
                                   label: t('Review checklist'),
-                                  icon: <IconCircleCheckmark size="xs" />,
+                                  icon: (
+                                    <IconCircleCheckmark
+                                      size="xs"
+                                      variant="muted"
+                                      aria-hidden
+                                    />
+                                  ),
                                 }
                               : {
                                   label: t('Next steps'),
-                                  icon: <IconArrow direction="right" size="xs" />,
+                                  icon: (
+                                    <IconArrow
+                                      direction="right"
+                                      size="xs"
+                                      variant="muted"
+                                      aria-hidden
+                                    />
+                                  ),
                                 }
-                            : {label: entry.label, icon: <IconFocus size="xs" />};
+                            : {
+                                label: entry.label,
+                                icon: <IconFocus size="xs" variant="muted" aria-hidden />,
+                              };
                         return (
                           <Stack key={entry.key} gap="xs">
                             <Flex gap="xs" align="center">
-                              <Text variant="muted" aria-hidden>
-                                {section.icon}
-                              </Text>
+                              {section.icon}
                               <Text size="xs" bold uppercase variant="muted">
                                 {section.label}
                               </Text>
