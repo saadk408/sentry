@@ -60,6 +60,14 @@ const ATTENTION_FILTER_OPTIONS: Array<{
 
 type QuickFilterValue = 'review_pr' | 'awaiting_input' | 'code_changes_ready' | 'merged';
 
+type SortValue = 'triage' | 'activity' | 'events';
+
+const SORT_OPTIONS: Array<{label: string; value: SortValue}> = [
+  {value: 'triage', label: t('Needs you first')},
+  {value: 'activity', label: t('Recent activity')},
+  {value: 'events', label: t('Most events')},
+];
+
 const PERIOD_FILTER_OPTIONS: Array<{label: string; value: string}> = [
   {value: '', label: t('All time')},
   {value: '24h', label: t('Last 24 hours')},
@@ -84,6 +92,7 @@ export default function AutofixOverview() {
   const attentionFilter = decodeList(location.query.attention) as AttentionReason[];
   const quickFilter = decodeScalar(location.query.quick) as QuickFilterValue | undefined;
   const period = decodeScalar(location.query.period);
+  const sort = (decodeScalar(location.query.sort) as SortValue | undefined) ?? 'triage';
 
   const {issues, isPending, isError, refetch, pageLinks} = useAutofixIssues({
     // No is:unresolved here (unlike the demo's DEFAULT_ISSUE_QUERY): issues
@@ -146,16 +155,27 @@ export default function AutofixOverview() {
     return true;
   });
 
-  // Triage-queue order — the page's promise is "work top to bottom": what
-  // needs a human first (by urgency tier), highest impact within a tier, run
-  // recency as the stable tiebreak. Recency alone would bury a week-old PR
-  // awaiting review under a busy run that needs nothing.
-  const sortedRows = [...filteredRows].sort(
-    (a, b) =>
+  // Default is the triage-queue order — the page's promise is "work top to
+  // bottom": what needs a human first (by urgency tier), highest impact within
+  // a tier, run recency as the stable tiebreak. Recency alone would bury a
+  // week-old PR awaiting review under a busy run that needs nothing.
+  const byActivity = (
+    a: (typeof filteredRows)[number],
+    b: (typeof filteredRows)[number]
+  ) => Date.parse(b.row.lastActivityAt) - Date.parse(a.row.lastActivityAt);
+  const sortedRows = [...filteredRows].sort((a, b) => {
+    if (sort === 'activity') {
+      return byActivity(a, b);
+    }
+    if (sort === 'events') {
+      return b.row.eventCount - a.row.eventCount || byActivity(a, b);
+    }
+    return (
       getTriageRank(a.row, a.attention) - getTriageRank(b.row, b.attention) ||
       b.row.eventCount - a.row.eventCount ||
-      Date.parse(b.row.lastActivityAt) - Date.parse(a.row.lastActivityAt)
-  );
+      byActivity(a, b)
+    );
+  });
 
   // Merge state is only knowable once the runs API returns pullRequests;
   // until then the Merged card stays honest with a disabled '—'.
@@ -271,10 +291,7 @@ export default function AutofixOverview() {
           </Grid>
           <Container marginBottom="md">
             <Text as="p" size="xs" variant="muted" align="right">
-              {t(
-                'Sorted by what needs you first · counts reflect the %s issues loaded below.',
-                sortedRows.length
-              )}
+              {t('Counts reflect the %s issues loaded below.', sortedRows.length)}
             </Text>
           </Container>
 
@@ -354,6 +371,24 @@ export default function AutofixOverview() {
                       {...triggerProps}
                       size="sm"
                       prefix={t('Activity')}
+                    />
+                  )}
+                />
+                <CompactSelect
+                  value={sort}
+                  options={SORT_OPTIONS}
+                  onChange={selected =>
+                    updateQuery({
+                      // Default sort keeps the URL clean.
+                      sort:
+                        selected.value === 'triage' ? undefined : String(selected.value),
+                    })
+                  }
+                  trigger={triggerProps => (
+                    <OverlayTrigger.Button
+                      {...triggerProps}
+                      size="sm"
+                      prefix={t('Sort')}
                     />
                   )}
                 />
