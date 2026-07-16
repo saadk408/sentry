@@ -175,21 +175,20 @@ describe('AutofixOverview', () => {
     expect(screen.getByText(/100 events/)).toBeInTheDocument();
   });
 
-  it('shows only the summary on the face and collapses the full analysis', async () => {
+  it('shows a single body block and collapses the full analysis', async () => {
     renderPage();
 
-    // The card body: the run summary…
-    expect(
-      await screen.findByText(
-        'JWT viewer auth landed before the proxy supported it, so requests fail; the run opened a PR restoring the header.'
-      )
-    ).toBeVisible();
-
-    // …plus the structured proposed-fix block, since code was drafted.
-    expect(screen.getByText('Proposed fix')).toBeVisible();
+    // The body is either/or: code was drafted, so the proposed-fix block
+    // renders and the summary does not (it would describe the same change).
+    expect(await screen.findByText('Proposed fix')).toBeVisible();
     expect(
       screen.getByText('Restores the Authorization header as a fallback.')
     ).toBeVisible();
+    expect(
+      screen.queryByText(
+        'JWT viewer auth landed before the proxy supported it, so requests fail; the run opened a PR restoring the header.'
+      )
+    ).not.toBeInTheDocument();
 
     // The timestamp is labeled as run activity.
     expect(screen.getByText(/^updated/)).toBeInTheDocument();
@@ -237,6 +236,11 @@ describe('AutofixOverview', () => {
           dateCreated: '2026-07-14T09:00:00Z',
           outputs: [
             {
+              key: 'user_1',
+              question: RUN_QUESTIONS[1]!.prompt,
+              answer: 'A mechanism sentence without any drafted fix.',
+            },
+            {
               key: 'user_2',
               question: RUN_QUESTIONS[2]!.prompt,
               answer: 'Just a plain sentence.',
@@ -252,6 +256,13 @@ describe('AutofixOverview', () => {
     expect(
       await screen.findByRole('link', {name: 'TypeError in checkout cart'})
     ).toBeInTheDocument();
+
+    // No drafted fix → the body block is the Diagnosis variant.
+    expect(screen.getByText('Diagnosis')).toBeVisible();
+    expect(
+      screen.getByText('A mechanism sentence without any drafted fix.')
+    ).toBeVisible();
+    expect(screen.queryByText('Proposed fix')).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', {name: 'Full analysis'}));
 

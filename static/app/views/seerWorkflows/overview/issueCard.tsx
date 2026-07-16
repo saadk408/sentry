@@ -18,6 +18,7 @@ import {
   IconMerge,
   IconPullRequest,
   IconQuestion,
+  IconSearch,
   IconShow,
 } from 'sentry/icons';
 import {t, tn} from 'sentry/locale';
@@ -73,11 +74,13 @@ export function IssueCard({orgSlug, row}: {orgSlug: string; row: OverviewRow}) {
   // run itself is one click away (matches the issue details ?seerDrawer param).
   const runUrl = {pathname: issueUrl, query: {seerDrawer: 'true'}};
   const attention = getAttentionReason(row);
-  // The body shows the run summary, plus a structured proposed-fix block when
-  // (and only when) the run actually drafted code — the prompt returns an
-  // empty answer otherwise, and empty answers never become entries.
+  // The body shows exactly one block: the proposed fix when the run drafted
+  // code (the fix prompt returns an empty answer otherwise, and empty answers
+  // never become entries), else the diagnosis summary.
   const summary = row.analysis.find(entry => entry.key === 'summary');
   const proposedFix = row.analysis.find(entry => entry.key === 'fix_summary');
+  const bodyEntry = proposedFix ?? summary;
+  const isFixBody = bodyEntry?.key === 'fix_summary';
   const detailEntries = row.analysis.filter(entry => entry.placement === 'details');
 
   const eventCountLabel =
@@ -200,18 +203,11 @@ export function IssueCard({orgSlug, row}: {orgSlug: string; row: OverviewRow}) {
           </Text>
         )}
 
-        {/* The body: a dense summary, kept to a readable measure */}
-        {summary && (
-          <Container maxWidth="90ch">
-            <Text size="sm" density="comfortable" as="div">
-              <SeerMarkdown raw={summary.answer} />
-            </Text>
-          </Container>
-        )}
-
-        {/* Structured proposed-fix block: what the drafted change is and why
-            it fixes the root cause. Only rendered when code was drafted. */}
-        {proposedFix && (
+        {/* The body is exactly ONE block, either/or: the proposed fix when the
+            run drafted code (the fix text supersedes the summary, which would
+            describe the same change twice), otherwise the diagnosis summary.
+            Same anatomy for both; icon + label color tell them apart. */}
+        {bodyEntry && (
           <Container
             background="secondary"
             border="muted"
@@ -221,15 +217,15 @@ export function IssueCard({orgSlug, row}: {orgSlug: string; row: OverviewRow}) {
           >
             <Stack gap="xs">
               <Flex gap="xs" align="center">
-                <Text variant="muted" aria-hidden>
-                  <IconCommit size="xs" />
+                <Text variant={isFixBody ? 'success' : 'muted'} aria-hidden>
+                  {isFixBody ? <IconCommit size="xs" /> : <IconSearch size="xs" />}
                 </Text>
-                <Text size="xs" bold uppercase variant="muted">
-                  {proposedFix.label}
+                <Text size="xs" bold uppercase variant={isFixBody ? 'success' : 'muted'}>
+                  {isFixBody ? t('Proposed fix') : t('Diagnosis')}
                 </Text>
               </Flex>
               <Text size="sm" density="comfortable" as="div">
-                <SeerMarkdown raw={proposedFix.answer} />
+                <SeerMarkdown raw={bodyEntry.answer} />
               </Text>
             </Stack>
           </Container>
