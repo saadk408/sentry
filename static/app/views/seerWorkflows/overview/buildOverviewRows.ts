@@ -34,9 +34,7 @@ const OUTCOME_ORDER: AutofixOutcome[] = [
  * attention logic tests stage membership: "code changes but no PR" is a
  * different action than "PR opened".
  */
-export function deriveAutofixOutcomes(
-  runState: ExplorerAutofixState | null
-): AutofixOutcome[] {
+function deriveAutofixOutcomes(runState: ExplorerAutofixState | null): AutofixOutcome[] {
   const reached = new Set<AutofixOutcome>();
   for (const section of getOrderedAutofixSections(runState)) {
     switch (section.step) {
@@ -188,7 +186,7 @@ function buildAnalysis(outputs: RunQuestion[] | undefined): {
   return {entries, headline};
 }
 
-export function buildOverviewRow(issue: AutofixIssue): OverviewRow {
+function buildOverviewRow(issue: AutofixIssue): OverviewRow {
   const state = issue.autofixState;
   const eventCount = Number(issue.count);
   const {entries: analysis, headline} = buildAnalysis(issue.run?.outputs);

@@ -40,7 +40,7 @@ export interface RunAnalysisEntry {
 }
 
 // One changed file within the run's drafted diff.
-export interface PatchFile {
+interface PatchFile {
   added: number;
   // Prefixed with "repo:" only when the diff spans more than one repository.
   path: string;

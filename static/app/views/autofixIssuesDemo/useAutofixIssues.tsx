@@ -67,9 +67,7 @@ export const AUTOFIX_PHASE_LABELS: Record<AutofixPhase, string> = {
  * 'pull_request'/'coding_agents' sections appended last, so the final section
  * is the furthest-progressed phase. Returns null when there is no run.
  */
-export function deriveAutofixPhase(
-  runState: ExplorerAutofixState | null
-): AutofixPhase | null {
+function deriveAutofixPhase(runState: ExplorerAutofixState | null): AutofixPhase | null {
   if (!runState) {
     return null;
   }
@@ -101,7 +99,7 @@ export interface RunQuestion {
 
 // A pull request linked to a run (via SeerRunPullRequest), with its lifecycle
 // state from the GitHub webhook ('open' | 'merged' | 'closed' | ...).
-export interface RunPullRequest {
+interface RunPullRequest {
   key: string;
   mergedAt: string | null;
   state: string | null;
@@ -109,7 +107,7 @@ export interface RunPullRequest {
 
 // Subset of the runs list response we consume
 // (src/sentry/api/serializers/models/seer_run.py).
-export interface SeerRun {
+interface SeerRun {
   groupId: string | null;
   id: string;
   lastTriggeredAt: string;
