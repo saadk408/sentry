@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import itertools
+from datetime import datetime, timezone
 from typing import Any, cast
 from unittest.mock import patch
 
@@ -22,6 +23,7 @@ from sentry.pr_metrics.activity_doc import (
     _fold_sync_chain,
     apply_activity,
     extract_event_at,
+    has_engaging_activity_since,
     is_failing_conclusion,
     new_document,
 )
@@ -775,3 +777,60 @@ def test_full_sequence_reapplication_is_idempotent_except_failed_attempts() -> N
     twice = build(double=True)
     # Entries dedup, comments/participants union, green run is idempotent → equal.
     assert once == twice
+
+
+# --- has_engaging_activity_since -------------------------------------------
+
+_CUTOFF = datetime(2020, 7, 10, 12, 0, 0, tzinfo=timezone.utc)
+
+
+def test_empty_document_has_no_engagement() -> None:
+    assert has_engaging_activity_since(new_document(), _CUTOFF) is False
+
+
+def test_engaging_entry_at_or_after_cutoff_counts() -> None:
+    doc = new_document()
+    _entry(
+        doc,
+        event_type=PullRequestActivityType.REVIEW_SUBMITTED,
+        ts="2020-07-10T12:00:00Z",
+    )
+    assert has_engaging_activity_since(doc, _CUTOFF) is True
+
+
+def test_engaging_entry_before_cutoff_does_not_count() -> None:
+    doc = new_document()
+    _entry(
+        doc,
+        event_type=PullRequestActivityType.REVIEW_REQUESTED,
+        ts="2020-07-10T11:59:59Z",
+    )
+    assert has_engaging_activity_since(doc, _CUTOFF) is False
+
+
+def test_non_engaging_entry_does_not_count() -> None:
+    doc = new_document()
+    _entry(
+        doc,
+        event_type=PullRequestActivityType.OPENED,
+        ts="2020-07-11T00:00:00Z",
+    )
+    assert has_engaging_activity_since(doc, _CUTOFF) is False
+
+
+def test_ready_for_review_entry_counts() -> None:
+    doc = new_document()
+    _entry(
+        doc,
+        event_type=PullRequestActivityType.READY_FOR_REVIEW,
+        ts="2020-07-11T00:00:00Z",
+    )
+    assert has_engaging_activity_since(doc, _CUTOFF) is True
+
+
+def test_events_dropped_reads_as_engaged_even_with_no_matching_entries() -> None:
+    # A capped document's dropped entries carry no timestamp to rule out, so a
+    # capped doc must not be read as stale — see MAX_EVENTS.
+    doc = new_document()
+    doc["events_dropped"] = 1
+    assert has_engaging_activity_since(doc, _CUTOFF) is True
