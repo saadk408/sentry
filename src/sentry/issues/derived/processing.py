@@ -388,6 +388,10 @@ def build_and_promote_derived_data(
 
     derived = _get_or_create_processing_row(group_id, version)
     if derived is None:
+        logger.info(
+            "issues.derived.build_and_promote.no_row",
+            extra={"group_id": group_id, "version": version},
+        )
         return
 
     result = PromotionResult.CURSOR_BEHIND

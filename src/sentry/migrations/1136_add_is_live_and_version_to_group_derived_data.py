@@ -24,7 +24,7 @@ class Migration(CheckedMigration):
     is_post_deployment = False
 
     dependencies = [
-        ("sentry", "1129_drop_saved_search"),
+        ("sentry", "1135_organizationcontributors_provider_hostname_not_null"),
     ]
 
     operations = [
