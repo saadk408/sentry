@@ -45,9 +45,19 @@ export interface RunAnalysisEntry {
   actionType?: NeedsYouAction;
 }
 
+// One changed file within the run's drafted diff.
+export interface PatchFile {
+  added: number;
+  // Prefixed with "repo:" only when the diff spans more than one repository.
+  path: string;
+  removed: number;
+}
+
 // Aggregate stats over the run's merged file patches.
 export interface PatchStats {
   added: number;
+  // Per-file breakdown, sorted by churn (added+removed) descending.
+  fileList: PatchFile[];
   files: number;
   removed: number;
 }

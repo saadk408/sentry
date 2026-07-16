@@ -27,7 +27,7 @@ import {SeerMarkdown} from 'sentry/views/seerExplorer/components/chat/shared';
 
 import {ATTENTION_META, AttentionBadge, getAttentionReason} from './attentionBadge';
 import {TriggerBadge} from './triggerBadge';
-import type {NeedsYouAction, OverviewRow} from './types';
+import type {NeedsYouAction, OverviewRow, PatchStats} from './types';
 
 // Icon + label per parsed needs-you category, so the kind of human action is
 // scannable across cards without reading the sentence.
@@ -51,6 +51,40 @@ const TitleLink = styled(Link)`
     text-decoration: underline;
   }
 `;
+
+// The most-changed files shown on hover before collapsing into "+N more".
+const MAX_TOOLTIP_FILES = 5;
+
+// Per-file breakdown for the diff pill's tooltip: path left, churn right,
+// biggest files first (fileList is pre-sorted by churn).
+function PatchFilesTooltip({stats}: {stats: PatchStats}) {
+  const shown = stats.fileList.slice(0, MAX_TOOLTIP_FILES);
+  const hidden = stats.fileList.length - shown.length;
+  return (
+    <Stack gap="2xs" align="stretch">
+      {shown.map(file => (
+        <Flex key={file.path} gap="lg" justify="between" align="baseline">
+          <Text size="xs" monospace align="left">
+            {file.path}
+          </Text>
+          <Text size="xs" monospace wrap="nowrap">
+            <Text size="xs" variant="success">
+              +{file.added}
+            </Text>{' '}
+            <Text size="xs" variant="danger">
+              −{file.removed}
+            </Text>
+          </Text>
+        </Flex>
+      ))}
+      {hidden > 0 && (
+        <Text size="xs" variant="muted" align="left">
+          {tn('+%s more file', '+%s more files', hidden)}
+        </Text>
+      )}
+    </Stack>
+  );
+}
 
 // Buckets the raw 0–1 score into a scannable label; the 0.7 threshold matches
 // isIssueQuickFixable (sentry/components/events/autofix/utils).
@@ -120,7 +154,11 @@ export function IssueCard({orgSlug, row}: {orgSlug: string; row: OverviewRow}) {
                   (Review PR ⇒ PR opened, Open PR ⇒ code drafted, …) and the
                   Outcome filter covers querying by it. One fact + one action. */}
             {row.patchStats && (
-              <Tooltip title={t('Size of the drafted code change')} skipWrapper>
+              <Tooltip
+                title={<PatchFilesTooltip stats={row.patchStats} />}
+                maxWidth={480}
+                skipWrapper
+              >
                 {/* Contained like its Tag/button neighbors so the diff size
                       doesn't read as floating text */}
                 <Container

@@ -171,6 +171,10 @@ describe('AutofixOverview', () => {
     expect(screen.getByText('+42')).toBeInTheDocument();
     expect(screen.getByText('−7')).toBeInTheDocument();
 
+    // Hovering the diff pill lists the changed files.
+    await userEvent.hover(screen.getByText('1 file'));
+    expect(await screen.findByText('src/cart.py')).toBeInTheDocument();
+
     // Issue impact numbers, abbreviated.
     expect(screen.getByText(/100 events/)).toBeInTheDocument();
   });

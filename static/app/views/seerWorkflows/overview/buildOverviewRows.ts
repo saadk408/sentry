@@ -81,7 +81,20 @@ function extractPatchStats(state: ExplorerAutofixState | null): PatchStats | und
   if (!isCodeChangesArtifact(artifact)) {
     return undefined;
   }
+  // Disambiguate paths with the repo name only when the diff spans repos.
+  const multiRepo = new Set(artifact.map(filePatch => filePatch.repo_name)).size > 1;
+  const fileList = artifact
+    .map(filePatch => ({
+      path: multiRepo
+        ? `${filePatch.repo_name}:${filePatch.patch.path}`
+        : filePatch.patch.path,
+      added: filePatch.patch.added,
+      removed: filePatch.patch.removed,
+    }))
+    // Most-changed files first, so a capped tooltip shows what matters.
+    .sort((a, b) => b.added + b.removed - (a.added + a.removed));
   return {
+    fileList,
     files: artifact.length,
     added: artifact.reduce((sum, filePatch) => sum + filePatch.patch.added, 0),
     removed: artifact.reduce((sum, filePatch) => sum + filePatch.patch.removed, 0),
