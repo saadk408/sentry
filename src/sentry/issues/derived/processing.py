@@ -156,7 +156,12 @@ def _process_batch(
 
 
 class GroupLogTimeout(Exception):
-    """Raised when process_group_log cannot finish within its timeout."""
+    """Raised when processing cannot finish within its time budget."""
+
+    def __init__(self, group_id: int, version: int | None = None) -> None:
+        self.group_id = group_id
+        self.version = version
+        super().__init__(group_id)
 
 
 DEFAULT_TIME_LIMIT = timedelta(seconds=8)
@@ -381,11 +386,11 @@ def build_and_promote_derived_data(
     corrected historical data just because the live row is more current.
 
     Retries are bounded to avoid starvation if the live row is being updated
-    faster than we can catch up. On exhaustion, a rebuild task is re-enqueued
-    so the corrections are not permanently lost.
-    """
-    from sentry.issues.derived.tasks import rebuild_group_derived_data_task
+    faster than we can catch up. On exhaustion the caller should re-enqueue.
 
+    Raises GroupLogTimeout (with ``version`` set) if the time-limited drain
+    could not finish, so the caller can decide its own retry strategy.
+    """
     derived = _get_or_create_processing_row(group_id, version)
     if derived is None:
         logger.info(
@@ -398,8 +403,7 @@ def build_and_promote_derived_data(
     for attempt in range(MAX_PROMOTION_ATTEMPTS):
         drained = _drain_log(derived, batch_size)
         if not drained:
-            rebuild_group_derived_data_task.delay(group_id, version=derived.version)
-            return
+            raise GroupLogTimeout(group_id, version=derived.version)
         result = promote_to_live(derived)
         if result is PromotionResult.PROMOTED:
             logger.info(
@@ -429,7 +433,6 @@ def build_and_promote_derived_data(
                 "attempts": MAX_PROMOTION_ATTEMPTS,
             },
         )
-        rebuild_group_derived_data_task.delay(group_id)
 
     logger.info(
         "issues.derived.promotion_rejected",

@@ -316,6 +316,7 @@ class ProcessGroupLogTest(TestCase):
             actor=GroupActionActor.user(user.id),
         )
         derived = process_group_log(group.id)
+        assert derived is not None
         # An open PR referencing the issue proposes a fix; the issue stays open.
         assert derived.data["status"] == "open"
         assert derived.progress == IssueProgressState.FIX_PROPOSED.value
@@ -331,6 +332,7 @@ class ProcessGroupLogTest(TestCase):
             actor=actor,
         )
         derived = process_group_log(group.id)
+        assert derived is not None
         assert derived.progress == IssueProgressState.FIX_PROPOSED.value
 
         _publish(
@@ -339,6 +341,7 @@ class ProcessGroupLogTest(TestCase):
             actor=actor,
         )
         derived = process_group_log(group.id)
+        assert derived is not None
         assert derived.progress == IssueProgressState.DIAGNOSED.value
 
     def test_pull_request_close_with_remaining_keeps_progress(self) -> None:
@@ -356,6 +359,7 @@ class ProcessGroupLogTest(TestCase):
             actor=actor,
         )
         derived = process_group_log(group.id)
+        assert derived is not None
         assert derived.progress == IssueProgressState.FIX_PROPOSED.value
 
     def test_pull_request_close_invalidate_and_replay_matches(self) -> None:
@@ -374,12 +378,14 @@ class ProcessGroupLogTest(TestCase):
             actor=actor,
         )
         first = process_group_log(group.id)
+        assert first is not None
         first_data = first.data.copy()
         first_progress = first.progress
         first_last_progressed_at = first.last_progressed_at
 
         invalidate_group_derived_data(group.id)
         second = process_group_log(group.id)
+        assert second is not None
 
         assert second.data == first_data
         assert second.progress == first_progress
@@ -544,7 +550,7 @@ class PromoteToLiveTest(TestCase):
         assert derived is not None
         mock_task.delay.assert_called_once_with(group.id)
 
-    def test_build_and_promote_exhaustion_reenqueues(self) -> None:
+    def test_build_and_promote_exhaustion_deletes_row(self) -> None:
         group = self.create_group()
         _publish(group=group, action=ViewAction(), actor=GroupActionActor.user(self.user.id))
 
@@ -556,32 +562,31 @@ class PromoteToLiveTest(TestCase):
             "sentry.issues.derived.processing.promote_to_live",
             return_value=PromotionResult.CURSOR_BEHIND,
         ):
-            with patch("sentry.issues.derived.tasks.rebuild_group_derived_data_task") as mock_task:
-                build_and_promote_derived_data(group.id)
+            build_and_promote_derived_data(group.id)
 
-        mock_task.delay.assert_called_once_with(group.id)
+        # The non-live candidate was cleaned up
+        assert not GroupDerivedData.objects.filter(group_id=group.id, is_live=False).exists()
+        # The original live row is untouched
+        assert GroupDerivedData.objects.filter(group_id=group.id, is_live=True).exists()
 
-    def test_build_and_promote_resumes_on_partial_drain(self) -> None:
+    def test_build_and_promote_raises_on_partial_drain(self) -> None:
         group = self.create_group()
         for _ in range(5):
             _publish(group=group, action=ViewAction(), actor=GroupActionActor.user(self.user.id))
 
-        # First call: drain times out, re-enqueues with version
         with patch("sentry.issues.derived.processing._drain_log", return_value=False):
-            with patch("sentry.issues.derived.tasks.rebuild_group_derived_data_task") as mock_task:
+            with pytest.raises(GroupLogTimeout) as exc_info:
                 build_and_promote_derived_data(group.id)
 
-        # Should have re-enqueued with the version of the processing row
-        assert mock_task.delay.call_count == 1
-        _, kwargs = mock_task.delay.call_args
-        version = kwargs["version"]
-        assert version is not None
+        assert exc_info.value.group_id == group.id
+        assert exc_info.value.version is not None
 
-        # The non-live row still exists
+        # The non-live row still exists for resumption
+        version = exc_info.value.version
         row = GroupDerivedData.objects.get(group_id=group.id, is_live=False, version=version)
         assert row is not None
 
-        # Second call with that version resumes and promotes
+        # Resuming with that version completes the promotion
         build_and_promote_derived_data(group.id, version=version)
         promoted = GroupDerivedData.objects.get(group_id=group.id, is_live=True)
         assert promoted.id == row.id
@@ -944,4 +949,5 @@ class ProcessGroupLogTimeoutTest(TestCase):
         GroupDerivedData.objects.filter(group_id=group.id).delete()
 
         derived = process_group_log(group.id, timeout=timedelta(minutes=5))
+        assert derived is not None
         assert derived.view_count == 3
