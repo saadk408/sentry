@@ -20,7 +20,12 @@ import {useNavigate} from 'sentry/utils/useNavigate';
 import {useOrganization} from 'sentry/utils/useOrganization';
 import {useAutofixIssues} from 'sentry/views/autofixIssuesDemo/useAutofixIssues';
 
-import {ATTENTION_META, ATTENTION_REASONS, getAttentionReason} from './attentionBadge';
+import {
+  ATTENTION_META,
+  ATTENTION_REASONS,
+  getAttentionReason,
+  getTriageRank,
+} from './attentionBadge';
 import {buildOverviewRows} from './buildOverviewRows';
 import {IssueCard} from './issueCard';
 import {RUN_QUESTION_PROMPTS} from './runQuestions';
@@ -141,8 +146,15 @@ export default function AutofixOverview() {
     return true;
   });
 
+  // Triage-queue order — the page's promise is "work top to bottom": what
+  // needs a human first (by urgency tier), highest impact within a tier, run
+  // recency as the stable tiebreak. Recency alone would bury a week-old PR
+  // awaiting review under a busy run that needs nothing.
   const sortedRows = [...filteredRows].sort(
-    (a, b) => Date.parse(b.row.lastActivityAt) - Date.parse(a.row.lastActivityAt)
+    (a, b) =>
+      getTriageRank(a.row, a.attention) - getTriageRank(b.row, b.attention) ||
+      b.row.eventCount - a.row.eventCount ||
+      Date.parse(b.row.lastActivityAt) - Date.parse(a.row.lastActivityAt)
   );
 
   // Merge state is only knowable once the runs API returns pullRequests;
@@ -259,7 +271,10 @@ export default function AutofixOverview() {
           </Grid>
           <Container marginBottom="md">
             <Text as="p" size="xs" variant="muted" align="right">
-              {t('Counts reflect the %s issues loaded below.', sortedRows.length)}
+              {t(
+                'Sorted by what needs you first · counts reflect the %s issues loaded below.',
+                sortedRows.length
+              )}
             </Text>
           </Container>
 

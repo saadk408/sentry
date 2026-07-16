@@ -195,6 +195,10 @@ export function useAutofixIssues({
         cursor,
         project: -1,
         statsPeriod: '90d',
+        // Explicit endpoint default: last-seen desc selects the issues still
+        // actively occurring as the candidate pool; callers order the loaded
+        // page themselves (the overview applies a triage sort).
+        sort: 'date',
         limit: PER_PAGE,
       },
       staleTime: 30_000,

@@ -344,6 +344,56 @@ describe('AutofixOverview', () => {
     expect(router.location.query.quick).toBe('merged');
   });
 
+  it('orders cards as a triage queue: actionable, then working, then merged', async () => {
+    // A merged, B awaiting PR review, C still processing → B, C, A.
+    MockApiClient.addMockResponse({
+      url: `/organizations/${organization.slug}/issues/`,
+      body: [
+        GroupFixture({id: '2', title: 'Issue A'}),
+        GroupFixture({id: '3', title: 'Issue B'}),
+        GroupFixture({id: '4', title: 'Issue C'}),
+      ],
+    });
+    const runFor = (groupId: string, pullRequests: unknown[]) => ({
+      id: `run-${groupId}`,
+      type: 'explorer',
+      groupId,
+      source: 'autofix',
+      lastTriggeredAt: '2026-07-14T09:00:00Z',
+      dateCreated: '2026-07-14T09:00:00Z',
+      pullRequests,
+      outputs: [],
+    });
+    MockApiClient.addMockResponse({
+      url: `/organizations/${organization.slug}/seer/runs/`,
+      body: [
+        runFor('2', [{key: '1', state: 'merged', mergedAt: '2026-07-15T09:00:00Z'}]),
+        runFor('3', []),
+        runFor('4', []),
+      ],
+    });
+    // A and B both reached an opened PR; A's merged flag comes from its run.
+    for (const issueId of ['2', '3']) {
+      MockApiClient.addMockResponse({
+        url: `/organizations/${organization.slug}/issues/${issueId}/autofix/`,
+        body: {autofix: autofixState},
+      });
+    }
+    MockApiClient.addMockResponse({
+      url: `/organizations/${organization.slug}/issues/4/autofix/`,
+      body: {autofix: {...autofixState, status: 'processing', repo_pr_states: {}}},
+    });
+
+    renderPage();
+
+    expect(await screen.findByText('Merged')).toBeInTheDocument();
+    const titles = screen
+      .getAllByRole('link')
+      .map(link => link.textContent)
+      .filter(text => text === 'Issue A' || text === 'Issue B' || text === 'Issue C');
+    expect(titles).toEqual(['Issue B', 'Issue C', 'Issue A']);
+  });
+
   it('keeps the Merged PRs card disabled while the API lacks PR state', async () => {
     renderPage();
 
