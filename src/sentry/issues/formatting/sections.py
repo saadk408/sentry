@@ -183,6 +183,18 @@ def spans_section(model: EventObject, fmt: Formatter, limits: Limits) -> str:
     return fmt.block("Span Evidence", _truncate("\n".join(lines), limits.max_spans_chars))
 
 
+def contexts_section(model: EventObject, fmt: Formatter, limits: Limits) -> str:
+    groups: list[str] = []
+    for name, data in model.contexts.items():
+        # drop the redundant "type" key each context echoes (e.g. browser -> type: "browser")
+        fields = [f"{key}: {value}" for key, value in data.items() if key != "type"]
+        if fields:
+            groups.append("\n".join([name, *fields]))
+    if not groups:
+        return ""
+    return fmt.block("Contexts", "\n\n".join(groups))
+
+
 # base event sections in render order
 EVENT_SECTIONS: list[SectionFn] = [
     title_section,
@@ -194,6 +206,7 @@ EVENT_SECTIONS: list[SectionFn] = [
     request_section,
     tags_section,
     user_section,
+    contexts_section,
 ]
 
 
