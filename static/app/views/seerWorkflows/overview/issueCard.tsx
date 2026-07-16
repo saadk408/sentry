@@ -3,7 +3,7 @@ import styled from '@emotion/styled';
 import {Tag} from '@sentry/scraps/badge';
 import {LinkButton} from '@sentry/scraps/button';
 import {Disclosure} from '@sentry/scraps/disclosure';
-import {Container, Flex, Stack} from '@sentry/scraps/layout';
+import {Container, Flex, Grid, Stack} from '@sentry/scraps/layout';
 import {Link} from '@sentry/scraps/link';
 import {Text} from '@sentry/scraps/text';
 import {Tooltip} from '@sentry/scraps/tooltip';
@@ -11,7 +11,15 @@ import {Tooltip} from '@sentry/scraps/tooltip';
 import {ErrorLevel} from 'sentry/components/events/errorLevel';
 import ProjectBadge from 'sentry/components/idBadge/projectBadge';
 import {TimeSince} from 'sentry/components/timeSince';
-import {IconCommit, IconMerge, IconPullRequest, IconSearch} from 'sentry/icons';
+import {
+  IconArrow,
+  IconCircleCheckmark,
+  IconCommit,
+  IconFocus,
+  IconMerge,
+  IconPullRequest,
+  IconSearch,
+} from 'sentry/icons';
 import {t, tn} from 'sentry/locale';
 import {formatAbbreviatedNumber} from 'sentry/utils/formatters';
 import {ellipsize} from 'sentry/utils/string/ellipsize';
@@ -269,39 +277,56 @@ export function IssueCard({orgSlug, row}: {orgSlug: string; row: OverviewRow}) {
               <Disclosure size="xs">
                 <Disclosure.Title>{t('Full analysis')}</Disclosure.Title>
                 <Disclosure.Content>
-                  <Stack gap="md" maxWidth="90ch">
-                    {/* The short id, raw issue title, and fixability live here
-                        rather than the card face to keep it quiet */}
-                    <Flex justify="between" align="center" gap="md">
-                      <Text size="xs" variant="muted">
-                        <Text size="xs" monospace>
-                          {t('Issue %s', row.shortId)}
-                        </Text>
-                        {' · '}
-                        {row.title}
+                  <Stack gap="md" paddingTop="xs">
+                    {/* Compact identity strip: the short id and Seer's
+                        fixability read — the raw title lives in the headline
+                        tooltip, not here */}
+                    <Flex gap="sm" align="center">
+                      <Text size="xs" monospace variant="muted">
+                        {row.shortId}
                       </Text>
                       {typeof row.fixabilityScore === 'number' && (
                         <FixabilityTag score={row.fixabilityScore} />
                       )}
                     </Flex>
-                    {detailEntries.map(entry => (
-                      <Stack key={entry.key} gap="xs">
-                        {/* Same label voice as the body block, so the expanded
-                            content reads as part of one system. The notes
-                            section's label depends on whether code exists:
-                            reviewing a change vs deciding how to proceed. */}
-                        <Text size="xs" bold uppercase variant="muted">
-                          {entry.key === 'reviewer_notes'
+                    {/* Sections share the body blocks' icon+label voice and
+                        sit side by side on wide screens instead of leaving
+                        the card's right half empty */}
+                    <Grid
+                      columns={{xs: '1fr', lg: 'repeat(2, minmax(0, 1fr))'}}
+                      gap="lg xl"
+                      align="start"
+                    >
+                      {detailEntries.map(entry => {
+                        const section =
+                          entry.key === 'reviewer_notes'
                             ? isFixBody
-                              ? t('Review checklist')
-                              : t('Next steps')
-                            : entry.label}
-                        </Text>
-                        <Text size="sm" density="comfortable" as="div">
-                          <SeerMarkdown raw={entry.answer} />
-                        </Text>
-                      </Stack>
-                    ))}
+                              ? {
+                                  label: t('Review checklist'),
+                                  icon: <IconCircleCheckmark size="xs" />,
+                                }
+                              : {
+                                  label: t('Next steps'),
+                                  icon: <IconArrow direction="right" size="xs" />,
+                                }
+                            : {label: entry.label, icon: <IconFocus size="xs" />};
+                        return (
+                          <Stack key={entry.key} gap="xs">
+                            <Flex gap="xs" align="center">
+                              <Text variant="muted" aria-hidden>
+                                {section.icon}
+                              </Text>
+                              <Text size="xs" bold uppercase variant="muted">
+                                {section.label}
+                              </Text>
+                            </Flex>
+                            <Text size="sm" density="comfortable" as="div">
+                              <SeerMarkdown raw={entry.answer} />
+                            </Text>
+                          </Stack>
+                        );
+                      })}
+                    </Grid>
                   </Stack>
                 </Disclosure.Content>
               </Disclosure>

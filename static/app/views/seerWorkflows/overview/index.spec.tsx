@@ -151,9 +151,6 @@ describe('AutofixOverview', () => {
       'href',
       `/organizations/${organization.slug}/issues/2/`
     );
-    // The raw title stays reachable in the expanded details.
-    expect(screen.getByText(/TypeError in checkout cart/)).toBeInTheDocument();
-
     // night_shift source maps to the Workflow trigger badge.
     expect(screen.getByText('Workflow')).toBeInTheDocument();
 
@@ -200,11 +197,11 @@ describe('AutofixOverview', () => {
     expect(
       screen.getByText('Commit c5bb895 stopped sending the Authorization header.')
     ).not.toBeVisible();
-    expect(screen.getByText('Issue PROJ-1')).not.toBeVisible();
+    expect(screen.getByText('PROJ-1')).not.toBeVisible();
 
     await userEvent.click(disclosure);
 
-    expect(screen.getByText('Issue PROJ-1')).toBeVisible();
+    expect(screen.getByText('PROJ-1')).toBeVisible();
     // Section headings are the clean labels, never the raw prompt text.
     expect(screen.getByText('Root cause')).toBeVisible();
     expect(
