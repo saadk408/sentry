@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from typing import Any, NotRequired, TypedDict
 
 from sentry.api.serializers import Serializer, register
-from sentry.seer.models.run import SeerAgentRun, SeerRun
+from sentry.seer.models.run import SeerAgentRun, SeerRun, SeerRunPullRequest
 
 
 # Within a run, outputs are ordered to match the questions that produced them
@@ -21,6 +22,15 @@ class RunQuestionOutput(TypedDict):
     question: NotRequired[str]
 
 
+class RunPullRequest(TypedDict):
+    # The PR number in the external provider (PullRequest.key).
+    key: str
+    # Lifecycle state from provider webhooks ('open', 'merged', 'closed', ...);
+    # null when no webhook has reported a state yet.
+    state: str | None
+    mergedAt: str | None
+
+
 class SeerRunResponse(TypedDict):
     id: str
     type: str
@@ -32,6 +42,9 @@ class SeerRunResponse(TypedDict):
     source: str | None
     projectId: str | None
     groupId: str | None
+    # Pull requests this run opened (via SeerRunPullRequest), with their
+    # webhook-reported lifecycle state. Empty when the run opened none.
+    pullRequests: list[RunPullRequest]
     # One-shot outputs (question answers), injected by the endpoint when
     # ?expand=questions and/or ?question= is passed; the serializer itself never
     # populates them.
@@ -48,7 +61,30 @@ class SeerRunSerializer(Serializer):
         agent_by_run_id = {
             agent.run_id: agent for agent in SeerAgentRun.objects.filter(run__in=item_list)
         }
-        return {run: {"agent": agent_by_run_id.get(run.id)} for run in item_list}
+
+        pull_requests_by_run_id: dict[int, list[RunPullRequest]] = defaultdict(list)
+        pr_links = SeerRunPullRequest.objects.filter(seer_run__in=item_list).select_related(
+            "pull_request"
+        )
+        for link in pr_links:
+            pull_request = link.pull_request
+            pull_requests_by_run_id[link.seer_run_id].append(
+                {
+                    "key": pull_request.key,
+                    "state": pull_request.state,
+                    "mergedAt": pull_request.merged_at.isoformat()
+                    if pull_request.merged_at is not None
+                    else None,
+                }
+            )
+
+        return {
+            run: {
+                "agent": agent_by_run_id.get(run.id),
+                "pull_requests": pull_requests_by_run_id.get(run.id, []),
+            }
+            for run in item_list
+        }
 
     def serialize(
         self, obj: SeerRun, attrs: Mapping[str, Any], user: Any, **kwargs: Any
@@ -68,4 +104,5 @@ class SeerRunSerializer(Serializer):
             "groupId": str(agent.group_id)
             if agent is not None and agent.group_id is not None
             else None,
+            "pullRequests": attrs.get("pull_requests", []),
         }
