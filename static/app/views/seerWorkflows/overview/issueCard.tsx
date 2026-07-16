@@ -147,7 +147,7 @@ export function IssueCard({orgSlug, row}: {orgSlug: string; row: OverviewRow}) {
                   title={
                     <Stack gap="2xs">
                       <Text size="xs" bold uppercase variant="muted" align="left">
-                        {t('Original issue title')}
+                        {t('Raw issue title')}
                       </Text>
                       <Text size="xs" align="left">
                         {ellipsize(row.title, 200)}
